@@ -18,6 +18,7 @@ const initial: LifeRecord[] = theme.seeds.map(([title, category, effort, impact]
 const store = new RecordStore(`life-board:${theme.id}:v1`, initial);
 let selectedCategory = "all";
 let searchQuery = "";
+let editingId: string | null = null;
 
 const HTML_ENTITIES: Readonly<Record<string, string>> = {
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -30,14 +31,14 @@ root.innerHTML = `
     <p>${theme.tagline}</p></div><div class="revision" title="Repository revision ledger">
     <span>revision</span><strong>${revisionLedger.ordinal}</strong><small>${revisionLedger.day}</small></div></header>
   <section id="summary" class="summary"></section>
-  <main class="layout"><section class="panel"><div class="panel-title"><h2>Add ${theme.itemLabel.toLowerCase()}</h2></div><form id="record-form" novalidate>
+  <main class="layout"><section class="panel"><div class="panel-title"><h2 id="form-title">Add ${theme.itemLabel.toLowerCase()}</h2></div><form id="record-form" novalidate>
     <label>Title<input name="title" maxlength="100" required></label>
     <div class="form-grid"><label>Category<select name="category">${theme.categories.map((x) => `<option>${x}</option>`).join("")}</select></label>
     <label>${theme.dateLabel}<input name="dueDate" type="date" value="${localDay()}" required></label>
     <label>${theme.effortLabel}<input name="effort" type="number" min="1" max="480" value="30" required></label>
     <label>${theme.impactLabel}<input name="impact" type="number" min="1" max="5" value="3" required></label></div>
     <label>Notes<textarea name="notes" rows="3" maxlength="600"></textarea></label><p id="errors" class="errors"></p>
-    <button type="submit">Add to plan</button></form><div class="exchange"><button id="backup-json" class="ghost">Backup JSON</button><button id="csv" class="ghost">Export CSV</button>
+    <div class="form-actions"><button type="submit" id="submit-btn">Add to plan</button><button type="button" id="cancel-edit" class="ghost" style="display:none">Cancel</button></div></form><div class="exchange"><button id="backup-json" class="ghost">Backup JSON</button><button id="csv" class="ghost">Export CSV</button>
     <label class="file">Import JSON<input id="import" type="file" accept="application/json"></label></div></section>
   <section class="panel plan-panel"><div class="panel-title"><h2>Priority plan</h2><div class="filter-group">
     <input id="search" type="text" placeholder="Search tasks..." style="width: 150px; margin-right: 0.5rem;">
@@ -50,22 +51,50 @@ root.innerHTML = `
 const form = document.querySelector<HTMLFormElement>("#record-form")!;
 const errors = document.querySelector<HTMLParagraphElement>("#errors")!;
 const capacity = document.querySelector<HTMLInputElement>("#capacity")!;
+const formTitle = document.querySelector<HTMLHeadingElement>("#form-title")!;
+const submitBtn = document.querySelector<HTMLButtonElement>("#submit-btn")!;
+const cancelBtn = document.querySelector<HTMLButtonElement>("#cancel-edit")!;
+
+function setEditMode(id: string | null) {
+  editingId = id;
+  if (!id) {
+    form.reset();
+    (form.elements.namedItem("dueDate") as HTMLInputElement).value = localDay();
+    formTitle.textContent = `Add ${theme.itemLabel.toLowerCase()}`;
+    submitBtn.textContent = "Add to plan";
+    cancelBtn.style.display = "none";
+    return;
+  }
+  const item = store.all().find((x) => x.id === id);
+  if (!item) return;
+  const fd = new FormData(form);
+  (form.elements.namedItem("title") as HTMLInputElement).value = item.title;
+  (form.elements.namedItem("category") as HTMLSelectElement).value = item.category;
+  (form.elements.namedItem("dueDate") as HTMLInputElement).value = item.dueDate;
+  (form.elements.namedItem("effort") as HTMLInputElement).value = String(item.effort);
+  (form.elements.namedItem("impact") as HTMLInputElement).value = String(item.impact);
+  (form.elements.namedItem("notes") as HTMLTextAreaElement).value = item.notes;
+  formTitle.textContent = `Edit ${theme.itemLabel.toLowerCase()}`;
+  submitBtn.textContent = "Save changes";
+  cancelBtn.style.display = "inline-block";
+}
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(form);
   const now = new Date().toISOString();
   const item: LifeRecord = {
-    id: crypto.randomUUID(), title: String(data.get("title") ?? "").trim(),
+    id: editingId ?? crypto.randomUUID(), title: String(data.get("title") ?? "").trim(),
     category: String(data.get("category") ?? ""), dueDate: String(data.get("dueDate") ?? ""),
-    effort: Number(data.get("effort")), impact: Number(data.get("impact")), status: "planned",
-    notes: String(data.get("notes") ?? "").trim(), createdAt: now, updatedAt: now,
+    effort: Number(data.get("effort")), impact: Number(data.get("impact")), status: editingId ? (store.all().find(x => x.id === editingId)?.status ?? "planned") : "planned",
+    notes: String(data.get("notes") ?? "").trim(), createdAt: editingId ? (store.all().find(x => x.id === editingId)?.createdAt ?? now) : now, updatedAt: now,
   };
   const complaints = validateRecord(item, theme);
   if (complaints.length) { errors.textContent = complaints.join(" "); return; }
-  errors.textContent = ""; store.upsert(item); form.reset();
-  (form.elements.namedItem("dueDate") as HTMLInputElement).value = localDay();
+  errors.textContent = ""; store.upsert(item); setEditMode(null);
 });
+
+cancelBtn.onclick = () => setEditMode(null);
 
 document.querySelector<HTMLSelectElement>("#filter")!.addEventListener("change", (event) => {
   selectedCategory = (event.target as HTMLSelectElement).value; render(store.all());
@@ -103,12 +132,13 @@ function render(records: readonly LifeRecord[]): void {
     <div><span class="badge">${escapeHtml(entry.item.category)}</span><h3>${escapeHtml(entry.item.title)}</h3><p>${escapeHtml(entry.reasons.join("; "))}</p></div>
     <div class="record-actions"><strong>${entry.score}</strong><select data-status="${escapeHtml(entry.item.id)}">
     ${(["planned", "active", "done"] as ItemStatus[]).map((status) => `<option ${status === entry.item.status ? "selected" : ""}>${status}</option>`).join("")}</select>
-    <button class="danger ghost" data-remove="${escapeHtml(entry.item.id)}">Remove</button></div></article>`).join("") : "<p class='empty'>No open records match this view.</p>";
+    <div style="display:flex; gap:0.5rem"><button class="ghost" data-edit="${escapeHtml(entry.item.id)}">Edit</button><button class="danger ghost" data-remove="${escapeHtml(entry.item.id)}">Remove</button></div></article>`).join("") : "<p class='empty'>No open records match this view.</p>";
   for (const select of document.querySelectorAll<HTMLSelectElement>("[data-status]")) select.onchange = () => {
     const item = records.find((x) => x.id === select.dataset.status); if (!item) return;
     store.upsert({ ...item, status: select.value as ItemStatus, updatedAt: new Date().toISOString() });
   };
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-remove]")) button.onclick = () => store.remove(button.dataset.remove!);
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-edit]")) button.onclick = () => setEditMode(button.dataset.edit!);
   document.querySelector("#week")!.innerHTML = suggestDailyLoad(records, Number(capacity.value) || 90).map((day) => `<article class="day ${day.overloaded ? "over" : ""}">
     <span>${new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</span><strong>${day.used} min</strong>
     <small>${day.entries.length} item(s)</small></article>`).join("");
