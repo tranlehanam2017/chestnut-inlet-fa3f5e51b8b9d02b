@@ -29,15 +29,14 @@ root.innerHTML = `
     <p>${theme.tagline}</p></div><div class="revision" title="Repository revision ledger">
     <span>revision</span><strong>${revisionLedger.ordinal}</strong><small>${revisionLedger.day}</small></div></header>
   <section id="summary" class="summary"></section>
-  <main class="layout"><section class="panel"><div class="panel-title"><h2>Add ${theme.itemLabel.toLowerCase()}</h2>
-    <button id="seed-export" class="ghost">Export JSON</button></div><form id="record-form" novalidate>
+  <main class="layout"><section class="panel"><div class="panel-title"><h2>Add ${theme.itemLabel.toLowerCase()}</h2></div><form id="record-form" novalidate>
     <label>Title<input name="title" maxlength="100" required></label>
     <div class="form-grid"><label>Category<select name="category">${theme.categories.map((x) => `<option>${x}</option>`).join("")}</select></label>
     <label>${theme.dateLabel}<input name="dueDate" type="date" value="${localDay()}" required></label>
     <label>${theme.effortLabel}<input name="effort" type="number" min="1" max="480" value="30" required></label>
     <label>${theme.impactLabel}<input name="impact" type="number" min="1" max="5" value="3" required></label></div>
     <label>Notes<textarea name="notes" rows="3" maxlength="600"></textarea></label><p id="errors" class="errors"></p>
-    <button type="submit">Add to plan</button></form><div class="exchange"><button id="csv" class="ghost">Export CSV</button>
+    <button type="submit">Add to plan</button></form><div class="exchange"><button id="backup-json" class="ghost">Backup JSON</button><button id="csv" class="ghost">Export CSV</button>
     <label class="file">Import JSON<input id="import" type="file" accept="application/json"></label></div></section>
   <section class="panel plan-panel"><div class="panel-title"><h2>Priority plan</h2><select id="filter"><option value="all">All categories</option>
     ${theme.categories.map((x) => `<option>${x}</option>`).join("")}</select></div><div id="plan"></div></section></main>
@@ -69,7 +68,7 @@ document.querySelector<HTMLSelectElement>("#filter")!.addEventListener("change",
   selectedCategory = (event.target as HTMLSelectElement).value; render(store.all());
 });
 capacity.addEventListener("input", () => render(store.all()));
-document.querySelector("#seed-export")!.addEventListener("click", () => download("records.json", exportJson(store.all()), "application/json"));
+document.querySelector("#backup-json")!.addEventListener("click", () => download("records.json", exportJson(store.all()), "application/json"));
 document.querySelector("#csv")!.addEventListener("click", () => download("records.csv", exportCsv(store.all()), "text/csv"));
 document.querySelector<HTMLInputElement>("#import")!.addEventListener("change", async (event) => {
   const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
