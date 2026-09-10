@@ -89,7 +89,7 @@ function render(records: readonly LifeRecord[]): void {
   document.querySelector("#summary")!.innerHTML = [
     ["Open", summary.total - summary.completed], ["Due soon", summary.dueSoon],
     ["Overdue", summary.overdue], [theme.effortLabel, summary.effort],
-  ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+  ].map(([label, value]) => `<article><span>${label}</span><strong class="${label === "Overdue" && value > 0 ? "text-danger" : ""}">${value}</strong></article>`).join("");
   
   const plan = buildPlan(records).filter((entry) => {
     const matchesCategory = selectedCategory === "all" || entry.item.category === selectedCategory;
@@ -99,7 +99,7 @@ function render(records: readonly LifeRecord[]): void {
     return matchesCategory && matchesSearch;
   });
 
-  document.querySelector("#plan")!.innerHTML = plan.length ? plan.map((entry) => `<article class="record">
+  document.querySelector("#plan")!.innerHTML = plan.length ? plan.map((entry) => `<article class="record ${entry.daysUntilDue < 0 ? "overdue" : ""}">
     <div><span class="badge">${escapeHtml(entry.item.category)}</span><h3>${escapeHtml(entry.item.title)}</h3><p>${escapeHtml(entry.reasons.join("; "))}</p></div>
     <div class="record-actions"><strong>${entry.score}</strong><select data-status="${escapeHtml(entry.item.id)}">
     ${(["planned", "active", "done"] as ItemStatus[]).map((status) => `<option ${status === entry.item.status ? "selected" : ""}>${status}</option>`).join("")}</select>
