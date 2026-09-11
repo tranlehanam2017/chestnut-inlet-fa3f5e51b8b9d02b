@@ -11,6 +11,7 @@ export interface LifeRecord {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  dependsOn?: string[];
 }
 
 export interface ThemeConfig {
@@ -30,6 +31,7 @@ export interface PlanEntry {
   score: number;
   reasons: string[];
   daysUntilDue: number;
+  isBlocked: boolean;
 }
 
 export interface PlanSummary {

@@ -18,7 +18,7 @@ describe("planning engine", () => {
     expect(buildPlan([distant, overdue], "2026-08-20")[0]!.item.id).toBe("late");
   });
   it("removes completed work from the active plan", () => expect(buildPlan([item({ status: "done" })], "2026-08-19")).toHaveLength(0));
-  it("explains the score", () => expect(priorityFor(item(), "2026-08-19").reasons.join(" ")).toContain("due in 1 day"));
+  it("explains the score", () => expect(priorityFor(item(), "2026-08-19", new Map()).reasons.join(" ")).toContain("due in 1 day"));
   it("summarizes status and workload", () => {
     const result = summarize([item(), item({ id: "two", status: "done", category: "Other" })], "2026-08-19");
     expect(result).toMatchObject({ total: 2, completed: 1, dueSoon: 1, effort: 30 });
@@ -26,6 +26,20 @@ describe("planning engine", () => {
   it("flags a day whose assigned effort exceeds capacity", () => {
     const week = suggestDailyLoad([item({ effort: 120 })], 60, "2026-08-19");
     expect(week.some((day) => day.overloaded)).toBe(true);
+  });
+  it("penalizes blocked tasks in priority", () => {
+    const parent = item({ id: "parent", status: "planned" });
+    const child = item({ id: "child", dependsOn: ["parent"], impact: 5 });
+    const plan = buildPlan([parent, child], "2026-08-19");
+    expect(plan.find(e => e.item.id === "child")?.isBlocked).toBe(true);
+    expect(plan[0].item.id).toBe("parent");
+  });
+  it("unblocks tasks when dependencies are done", () => {
+    const parent = item({ id: "parent", status: "done" });
+    const child = item({ id: "child", dependsOn: ["parent"] });
+    const plan = buildPlan([parent, child], "2026-08-19");
+    expect(plan[0].item.id).toBe("child");
+    expect(plan[0].isBlocked).toBe(false);
   });
 });
 

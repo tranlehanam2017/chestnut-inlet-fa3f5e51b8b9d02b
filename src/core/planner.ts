@@ -28,10 +28,11 @@ export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): 
   return errors;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay()): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item)): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   let score = item.impact * 12;
+  
   if (daysUntilDue < 0) {
     score += 55 + Math.min(Math.abs(daysUntilDue), 14) * 3;
     reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
@@ -42,20 +43,41 @@ export function priorityFor(item: LifeRecord, today = localDay()): PlanEntry {
     score += 36 - daysUntilDue * 4;
     reasons.push(`due in ${daysUntilDue} day(s)`);
   }
+
   const effortPenalty = Math.min(item.effort / 20, 12);
   score -= effortPenalty;
+
   if (item.status === "active") {
     score += 8;
     reasons.push("already in progress");
   }
+
   if (item.status === "done") score = -1;
+
+  const isBlocked = item.dependsOn?.some(depId => {
+    const dep = allItems.get(depId);
+    return dep && dep.status !== "done";
+  }) ?? false;
+
+  if (isBlocked) {
+    score -= 100;
+    reasons.push("blocked by dependency");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue };
+  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked };
+}
+
+function itemsToMap(items: any): Map<string, LifeRecord> {
+  if (items instanceof Map) return items;
+  if (Array.isArray(items)) return new Map(items.map(i => [i.id, i]));
+  return new Map();
 }
 
 export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
+  const itemMap = itemsToMap(items);
   return items
-    .map((item) => priorityFor(item, today))
+    .map((item) => priorityFor(item, today, itemMap))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
 }
@@ -80,7 +102,11 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     used: 0,
     entries: [] as PlanEntry[],
   }));
-  for (const entry of buildPlan(items, today)) {
+  
+  const plan = buildPlan(items, today);
+  
+  for (const entry of plan) {
+    if (entry.isBlocked) continue;
     const candidates = days.filter((day, index) => index <= Math.max(0, Math.min(6, entry.daysUntilDue)));
     const target = (candidates.length > 0 ? candidates : days).sort((a, b) => a.used - b.used)[0];
     if (!target) continue;
