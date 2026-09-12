@@ -22,6 +22,7 @@ const store = new RecordStore("departure-canvas-v1", theme.seeds.map(([title, ca
 const app = document.getElementById("app")!;
 let currentEditingId: string | null = null;
 let searchQuery = "";
+let categoryFilter = "All";
 let dailyCapacity = 120;
 
 function daysBetween(from: string, to: string): number {
@@ -70,24 +71,39 @@ function render() {
           <button id="add-btn">+ New</button>
         </div>
 
-        <div class="filter-group" style="margin-bottom: 1rem">
-          <label for="search">Search</label>
-          <input type="text" id="search" placeholder="Filter tasks..." value="${searchQuery}">
+        <div class="filter-group" style="margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem">
+          <div>
+            <label for="search">Search</label>
+            <input type="text" id="search" placeholder="Filter tasks..." value="${searchQuery}">
+          </div>
+          <div>
+            <label for="cat-filter">Category</label>
+            <select id="cat-filter">
+              <option value="All" ${categoryFilter === 'All' ? 'selected' : ''}>All Categories</option>
+              ${theme.categories.map(c => `<option value="${c}" ${categoryFilter === c ? 'selected' : ''}>${c}</option>`).join("")}
+            </select>
+          </div>
         </div>
 
         <div id="records-list">
           ${records
-            .filter(r => r.title.toLowerCase().includes(searchQuery.toLowerCase()) || r.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+            .filter(r => 
+              (categoryFilter === "All" || r.category === categoryFilter) &&
+              (r.title.toLowerCase().includes(searchQuery.toLowerCase()) || r.notes.toLowerCase().includes(searchQuery.toLowerCase()))
+            )
             .map(r => {
               const entry = plan.find(e => e.item.id === r.id);
               const isOverdue = r.status !== "done" && daysBetween(today, r.dueDate) < 0;
               const isSelected = currentEditingId === r.id;
               return `
                 <div class="record ${isOverdue ? 'overdue' : ''} ${isSelected ? 'selected' : ''}" data-id="${r.id}">
-                  <div>
-                    <div class="badge">${r.category}</div>
-                    <h3>${r.title}</h3>
-                    <p>${r.dueDate} • ${r.effort}m</p>
+                  <div style="display: flex; gap: 0.75rem; align-items: center">
+                    <input type="checkbox" class="done-toggle" ${r.status === 'done' ? 'checked' : ''} data-id="${r.id}" style="width: 1.2rem; cursor: pointer">
+                    <div>
+                      <div class="badge">${r.category}</div>
+                      <h3 style="${r.status === 'done' ? 'text-decoration: line-through; opacity: 0.6' : ''}">${r.title}</h3>
+                      <p>${r.dueDate} • ${r.effort}m</p>
+                    </div>
                   </div>
                   <div class="record-actions">
                     <div class="badge">${r.status}</div>
@@ -230,6 +246,22 @@ function setupListeners() {
       return;
     }
 
+    if (target.classList.contains("done-toggle") && target instanceof HTMLInputElement) {
+      e.stopPropagation();
+      const id = target.dataset.id || null;
+      if (id) {
+        const record = store.all().find(r => r.id === id);
+        if (record) {
+          store.upsert({
+            ...record,
+            status: target.checked ? "done" : "planned",
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+      return;
+    }
+
     const recordDiv = target.closest(".record") as HTMLElement;
     if (recordDiv) {
       currentEditingId = recordDiv.dataset.id || null;
@@ -280,6 +312,12 @@ function setupListeners() {
     const searchInput = app.querySelector("#search") as HTMLInputElement;
     if (searchInput && target === searchInput) {
       searchQuery = searchInput.value;
+      render();
+    }
+
+    const catInput = app.querySelector("#cat-filter") as HTMLSelectElement;
+    if (catInput && target === catInput) {
+      categoryFilter = catInput.value;
       render();
     }
   };
