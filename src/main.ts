@@ -1,5 +1,5 @@
 import { RecordStore } from "./core/store";
-import { buildPlan, localDay, summarize, validateRecord } from "./core/planner";
+import { buildPlan, localDay, summarize, validateRecord, suggestDailyLoad } from "./core/planner";
 import { exportJson, exportCsv, importJson, download } from "./core/exchange";
 import { theme } from "./theme";
 import type { LifeRecord, ItemStatus } from "./types";
@@ -34,6 +34,7 @@ function render() {
   const today = localDay();
   const plan = buildPlan(records, today);
   const summary = summarize(records, today);
+  const dailyLoad = suggestDailyLoad(records, 120, today);
 
   app.innerHTML = `
     <div class="hero">
@@ -105,6 +106,24 @@ function render() {
           ${currentEditingId 
             ? renderEditor(records.find(r => r.id === currentEditingId)!)
             : `<div class="empty">Select a task to edit or create a new one</div>`}
+        </div>
+
+        <div class="week-panel">
+          <div class="panel-title" style="margin-top: 2rem">
+            <h2>Suggested 7-Day Load</h2>
+            <span class="badge">Limit: 120m/day</span>
+          </div>
+          <div class="week">
+            ${dailyLoad.map(day => `
+              <div class="day ${day.overloaded ? 'over' : ''}">
+                <small>${day.date}</small>
+                <strong>${day.used}m</strong>
+                <div style="font-size: 0.6rem; margin-top: 0.4rem; opacity: 0.8">
+                  ${day.entries.length} task${day.entries.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            `).join("")}
+          </div>
         </div>
       </div>
     </div>
