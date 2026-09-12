@@ -22,6 +22,7 @@ const store = new RecordStore("departure-canvas-v1", theme.seeds.map(([title, ca
 const app = document.getElementById("app")!;
 let currentEditingId: string | null = null;
 let searchQuery = "";
+let dailyCapacity = 120;
 
 function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`);
@@ -29,12 +30,17 @@ function daysBetween(from: string, to: string): number {
   return Math.round((end - start) / 86_400_000);
 }
 
+function getDayName(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00Z`);
+  return date.toLocaleDateString('en-US', { weekday: 'short' });
+}
+
 function render() {
   const records = store.all();
   const today = localDay();
   const plan = buildPlan(records, today);
   const summary = summarize(records, today);
-  const dailyLoad = suggestDailyLoad(records, 120, today);
+  const dailyLoad = suggestDailyLoad(records, dailyCapacity, today);
 
   app.innerHTML = `
     <div class="hero">
@@ -110,13 +116,17 @@ function render() {
 
         <div class="week-panel">
           <div class="panel-title" style="margin-top: 2rem">
-            <h2>Suggested 7-Day Load</h2>
-            <span class="badge">Limit: 120m/day</span>
+            <h2 style="font-size: 1.1rem">Suggested 7-Day Load</h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem">
+              <label style="margin: 0; font-size: 0.7rem">Limit:</label>
+              <input type="number" id="capacity-input" value="${dailyCapacity}" style="width: 60px; padding: 0.2rem 0.4rem; font-size: 0.8rem">
+              <span style="font-size: 0.7rem">m/day</span>
+            </div>
           </div>
           <div class="week">
             ${dailyLoad.map(day => `
               <div class="day ${day.overloaded ? 'over' : ''}">
-                <small>${day.date}</small>
+                <small><strong>${getDayName(day.date)}</strong> ${day.date}</small>
                 <strong>${day.used}m</strong>
                 <div style="font-size: 0.6rem; margin-top: 0.4rem; opacity: 0.8">
                   ${day.entries.length} task${day.entries.length !== 1 ? 's' : ''}
@@ -273,6 +283,14 @@ function setupListeners() {
       render();
     }
   };
+
+  const capacityInput = app.querySelector("#capacity-input") as HTMLInputElement;
+  if (capacityInput) {
+    capacityInput.oninput = (e) => {
+      dailyCapacity = parseInt((e.target as HTMLInputElement).value) || 1;
+      render();
+    };
+  }
 
   const form = app.querySelector("#task-form") as HTMLFormElement;
   if (form) {
