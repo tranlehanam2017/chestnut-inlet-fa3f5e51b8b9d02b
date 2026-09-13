@@ -132,10 +132,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   for (const entry of plan) {
     if (entry.isBlocked) continue;
     
-    // Prioritize filling days that are earliest but have remaining capacity.
-    // To avoid pushing urgent tasks to later days, we check if the task is due
-    // before the candidate day. If it is, we only allow it on the earliest possible day
-    // that can still fit it, potentially allowing slight overage to ensure urgency.
     const candidates = days.filter((day) => {
       const isFuture = day.date >= today;
       const hasRoom = day.used + entry.item.effort <= capacity * 1.2;
@@ -144,8 +140,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     if (candidates.length === 0) continue;
 
-    // If the item is due very soon (e.g., within 2 days), try to force it into the earliest candidate
-    // even if that day is already slightly over capacity, to ensure it doesn't slip.
     const urgentThreshold = 2;
     const isUrgent = entry.daysUntilDue <= urgentThreshold;
     
@@ -156,5 +150,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     target.entries.push(entry);
     target.used += entry.item.effort;
   }
-  return days.map((day) => ({ ...day, overloaded: day.used > capacity }));
+  return days.map((day) => ({
+    ...day,
+    overloaded: day.used > capacity,
+    overage: Math.max(0, day.used - capacity),
+  }));
 }
