@@ -18,6 +18,7 @@ label { display: grid; gap: .35rem; color: #526b64; font-size: .82rem; font-weig
 .record h3 { margin-top: .4rem; }
 .record p { margin: .3rem 0 0; color: #698078; font-size: .86rem; }
 .record.overdue { border-left: 4px solid #a33232; padding-left: 0.75rem; background: #fff8f8; }
+.record.critical { border-left: 4px solid #d40000; background: #fff0f0; }
 .record.selected { background: #f0f7f4; border-left: 4px solid #176b55; padding-left: 0.75rem; }
 .record.blocked { opacity: 0.8; }
 .record:focus { background: #f8faf9; box-shadow: inset 0 0 0 2px #cbdad3; }

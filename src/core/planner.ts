@@ -131,9 +131,18 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   
   for (const entry of plan) {
     if (entry.isBlocked) continue;
-    const candidates = days.filter((day, index) => index <= Math.max(0, Math.min(6, entry.daysUntilDue)));
-    const target = (candidates.length > 0 ? candidates : days).sort((a, b) => a.used - b.used)[0];
+    
+    // Prioritize filling days that are earliest but have remaining capacity
+    // before spilling over to later days.
+    const candidates = days.filter((day) => {
+      const isFuture = day.date >= today;
+      const hasRoom = day.used + entry.item.effort <= capacity * 1.2; // Allow slight overage
+      return isFuture && hasRoom;
+    });
+
+    const target = candidates.length > 0 ? candidates[0] : days[0];
     if (!target) continue;
+    
     target.entries.push(entry);
     target.used += entry.item.effort;
   }
