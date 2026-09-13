@@ -41,6 +41,13 @@ describe("planning engine", () => {
     expect(plan[0].item.id).toBe("child");
     expect(plan[0].isBlocked).toBe(false);
   });
+  it("detects circular dependencies and penalizes score", () => {
+    const a = item({ id: "a", dependsOn: ["b"] });
+    const b = item({ id: "b", dependsOn: ["a"] });
+    const plan = buildPlan([a, b], "2026-08-19");
+    expect(plan.every(e => e.reasons.some(r => r.includes("circular")))).toBe(true);
+    expect(plan.every(e => e.isBlocked)).toBe(true);
+  });
 });
 
 describe("JSON exchange boundary", () => {

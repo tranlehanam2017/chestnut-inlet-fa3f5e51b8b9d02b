@@ -28,6 +28,25 @@ export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): 
   return errors;
 }
 
+function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new Set<string>(), stack = new Set<string>()): boolean {
+  visited.add(id);
+  stack.add(id);
+
+  const item = allItems.get(id);
+  if (item && item.dependsOn) {
+    for (const depId of item.dependsOn) {
+      if (!visited.has(depId)) {
+        if (hasCycle(depId, allItems, visited, stack)) return true;
+      } else if (stack.has(depId)) {
+        return true;
+      }
+    }
+  }
+
+  stack.delete(id);
+  return false;
+}
+
 export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item)): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
@@ -59,13 +78,18 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     return dep && dep.status !== "done";
   }) ?? false;
 
-  if (isBlocked) {
+  const isCircular = hasCycle(item.id, allItems);
+
+  if (isCircular) {
+    score -= 200;
+    reasons.push("circular dependency detected");
+  } else if (isBlocked) {
     score -= 100;
     reasons.push("blocked by dependency");
   }
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked };
+  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular };
 }
 
 function itemsToMap(items: any): Map<string, LifeRecord> {
