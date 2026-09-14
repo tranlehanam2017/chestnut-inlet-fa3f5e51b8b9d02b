@@ -47,6 +47,21 @@ function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new S
   return false;
 }
 
+export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>): LifeRecord | null {
+  if (!item.dependsOn || item.dependsOn.length === 0) return null;
+
+  for (const depId of item.dependsOn) {
+    const dep = allItems.get(depId);
+    if (!dep || dep.status === "done") continue;
+    
+    // Recursively find the root of this dependency chain
+    const root = findBlockingRoot(dep, allItems);
+    if (root) return root;
+    return dep;
+  }
+  return null;
+}
+
 export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item)): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
@@ -85,7 +100,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("circular dependency detected");
   } else if (isBlocked) {
     score -= 100;
-    reasons.push("blocked by dependency");
+    const root = findBlockingRoot(item, allItems);
+    reasons.push(root ? `blocked by "${root.title}"` : "blocked by dependency");
   }
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
