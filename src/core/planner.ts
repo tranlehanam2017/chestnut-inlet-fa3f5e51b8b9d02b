@@ -68,7 +68,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   let score = item.impact * 12;
   
   if (daysUntilDue < 0) {
-    score += 55 + Math.min(Math.abs(daysUntilDue), 14) * 3;
+    // Refined: High impact overdue tasks get a steeper priority climb
+    const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 3);
+    score += overdueBonus;
     reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
   } else if (daysUntilDue === 0) {
     score += 45;
@@ -142,6 +144,37 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     .map((item) => priorityFor(item, today, itemMap, criticalPathIds))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
+}
+
+/**
+ * Identifies the 'bottleneck' task: the task that blocks the most high-priority
+ * items and is itself not blocked.
+ */
+export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
+  const itemMap = itemsToMap(items);
+  const plan = buildPlan(items, today);
+  const blockingCounts = new Map<string, number>();
+
+  for (const entry of plan) {
+    if (entry.isBlocked) {
+      const root = findBlockingRoot(entry.item, itemMap);
+      if (root) {
+        blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
+      }
+    }
+  }
+
+  let maxBlocks = 0;
+  let bottleneckId: string | null = null;
+
+  for (const [id, count] of blockingCounts.entries()) {
+    if (count > maxBlocks) {
+      maxBlocks = count;
+      bottleneckId = id;
+    }
+  }
+
+  return bottleneckId ? itemMap.get(bottleneckId) || null : null;
 }
 
 export function summarize(items: readonly LifeRecord[], today = localDay()): PlanSummary {
