@@ -214,9 +214,23 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const urgentThreshold = 2;
     const isUrgent = entry.daysUntilDue <= urgentThreshold;
     
-    const target = isUrgent 
-      ? candidates[0] 
-      : candidates.find(d => d.used + entry.item.effort <= capacity) || candidates[0];
+    let target;
+    if (isUrgent) {
+      // For urgent tasks, take the earliest possible day
+      target = candidates[0];
+    } else {
+      // For non-urgent tasks, try to balance by looking for a day that
+      // isn't already near capacity, or is closer to the actual due date
+      const bestFit = candidates.find(d => d.used + entry.item.effort <= capacity);
+      if (bestFit) {
+        target = bestFit;
+      } else {
+        // Fallback to the day with the most remaining relative capacity
+        target = candidates.reduce((prev, curr) => 
+          (curr.used < prev.used) ? curr : prev
+        );
+      }
+    }
 
     target.entries.push(entry);
     target.used += entry.item.effort;
