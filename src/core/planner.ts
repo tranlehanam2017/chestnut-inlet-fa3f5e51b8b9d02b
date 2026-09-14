@@ -62,7 +62,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item)): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>()): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   let score = item.impact * 12;
@@ -104,6 +104,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(root ? `blocked by "${root.title}"` : "blocked by dependency");
   }
 
+  if (criticalPathIds.has(item.id)) {
+    score += 40;
+    reasons.push("on critical path");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   // Critical tasks are those that are overdue or due today AND have high impact (4+),
@@ -121,8 +126,20 @@ function itemsToMap(items: any): Map<string, LifeRecord> {
 
 export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
   const itemMap = itemsToMap(items);
+  
+  // Identify critical path: tasks that block critical or high-impact urgent tasks
+  const criticalPathIds = new Set<string>();
+  const urgentItems = items.filter(i => i.status !== "done" && (daysBetween(today, i.dueDate) <= 0 || i.impact >= 4));
+  
+  for (const urgent of urgentItems) {
+    const root = findBlockingRoot(urgent, itemMap);
+    if (root) criticalPathIds.add(root.id);
+    // Also mark immediate dependencies of urgent items as critical path
+    urgent.dependsOn?.forEach(id => criticalPathIds.add(id));
+  }
+
   return items
-    .map((item) => priorityFor(item, today, itemMap))
+    .map((item) => priorityFor(item, today, itemMap, criticalPathIds))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
 }
