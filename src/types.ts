@@ -32,6 +32,7 @@ export interface PlanEntry {
   reasons: string[];
   daysUntilDue: number;
   isBlocked: boolean;
+  isCritical: boolean;
 }
 
 export interface PlanSummary {

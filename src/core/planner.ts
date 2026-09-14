@@ -89,7 +89,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular };
+
+  // Critical tasks are those that are overdue or due today AND have high impact (4+),
+  // or are significantly overdue regardless of impact.
+  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3);
+
+  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical };
 }
 
 function itemsToMap(items: any): Map<string, LifeRecord> {
