@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { importJson } from "../src/core/exchange";
 import { buildPlan, daysBetween, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
 import { theme } from "../src/theme";
-import type { LifeRecord } from "../src/types";
+import type { LifeRecord } from "../types";
 
 const item = (overrides: Partial<LifeRecord> = {}): LifeRecord => ({
   id: "one", title: "Example", category: "General", dueDate: "2026-08-20", effort: 30,
@@ -71,6 +71,18 @@ describe("planning engine", () => {
     const leaf3 = item({ id: "l3", dependsOn: ["other"] });
     
     expect(findBottleneck([root, leaf1, leaf2, other, leaf3], "2026-08-19")?.id).toBe("root");
+  });
+  it("distributes normal load across days to avoid spikes", () => {
+    const tasks = [
+      item({ id: "t1", effort: 30, dueDate: "2026-08-30" }),
+      item({ id: "t2", effort: 30, dueDate: "2026-08-30" }),
+      item({ id: "t3", effort: 30, dueDate: "2026-08-30" }),
+    ];
+    const week = suggestDailyLoad(tasks, 60, "2026-08-19");
+    // With 60 capacity and 3 tasks of 30, they should ideally be split
+    // or at least not all crammed into day 1 if the balance logic works.
+    const daysWithTasks = week.filter(d => d.entries.length > 0);
+    expect(daysWithTasks.length).toBeGreaterThan(1);
   });
 });
 

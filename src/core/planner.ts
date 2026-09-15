@@ -226,41 +226,37 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   
   const plan = buildPlan(items, today);
   
-  for (const entry of plan) {
-    if (entry.isBlocked) continue;
+  // Separate tasks to allow a two-pass allocation
+  // Pass 1: Urgent/Critical tasks get first dibs on the earliest possible slot
+  // Pass 2: Normal tasks try to balance load or fit into remaining gaps
+  const urgent = plan.filter(e => e.daysUntilDue <= 2 || e.isCritical);
+  const normal = plan.filter(e => e.daysUntilDue > 2 && !e.isCritical);
+
+  const allocate = (entry: PlanEntry, strictCapacity: boolean) => {
+    if (entry.isBlocked) return false;
     
     const candidates = days.filter((day) => {
       const isFuture = day.date >= today;
-      const hasRoom = day.used + entry.item.effort <= capacity * 1.2;
-      return isFuture && hasRoom;
+      const limit = strictCapacity ? capacity : capacity * 1.2;
+      return isFuture && (day.used + entry.item.effort <= limit);
     });
 
-    if (candidates.length === 0) continue;
+    if (candidates.length === 0) return false;
 
-    const urgentThreshold = 2;
-    const isUrgent = entry.daysUntilDue <= urgentThreshold || entry.isCritical;
-    
-    let target;
-    if (isUrgent) {
-      // For urgent or critical tasks, take the earliest possible day
-      target = candidates[0];
-    } else {
-      // For non-urgent tasks, try to balance by looking for a day that
-      // isn't already near capacity, or is closer to the actual due date
-      const bestFit = candidates.find(d => d.used + entry.item.effort <= capacity);
-      if (bestFit) {
-        target = bestFit;
-      } else {
-        // Fallback to the day with the most remaining relative capacity
-        target = candidates.reduce((prev, curr) => 
-          (curr.used < prev.used) ? curr : prev
-        );
-      }
-    }
+    // For urgent tasks: earliest possible
+    // For normal tasks: balance by choosing day with lowest current load
+    const target = strictCapacity 
+      ? candidates[0] 
+      : candidates.reduce((prev, curr) => (curr.used < prev.used) ? curr : prev);
 
     target.entries.push(entry);
     target.used += entry.item.effort;
-  }
+    return true;
+  };
+
+  urgent.forEach(e => allocate(e, true));
+  normal.forEach(e => allocate(e, false));
+
   return days.map((day) => ({
     ...day,
     overloaded: day.used > capacity,
