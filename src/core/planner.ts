@@ -62,7 +62,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   let score = item.impact * 12;
@@ -121,6 +121,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`unblocks ${blockingPower} task(s)`);
   }
 
+  if (blockingDepth > 1) {
+    score += blockingDepth * 10;
+    reasons.push(`unlocks chain of ${blockingDepth} tasks`);
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   // Critical tasks are those that are overdue or due today AND have high impact (4+),
@@ -164,8 +169,31 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     }
   }
 
+  // Calculate blocking depth (max transitive distance to a leaf)
+  const depthCache = new Map<string, number>();
+  const getDepth = (id: string): number => {
+    if (depthCache.has(id)) return depthCache.get(id)!;
+    
+    let maxDepth = 0;
+    for (const item of items) {
+      if (item.status === "done") continue;
+      if (item.dependsOn?.includes(id)) {
+        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id));
+      }
+    }
+    depthCache.set(id, maxDepth);
+    return maxDepth;
+  };
+
   return items
-    .map((item) => priorityFor(item, today, itemMap, criticalPathIds, blockingCounts.get(item.id) ?? 0))
+    .map((item) => priorityFor(
+      item, 
+      today, 
+      itemMap, 
+      criticalPathIds, 
+      blockingCounts.get(item.id) ?? 0, 
+      getDepth(item.id)
+    ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
 }
