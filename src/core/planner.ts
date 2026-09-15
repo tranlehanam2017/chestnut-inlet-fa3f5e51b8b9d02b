@@ -143,11 +143,15 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   const criticalPathIds = new Set<string>();
   const urgentItems = items.filter(i => i.status !== "done" && (daysBetween(today, i.dueDate) <= 0 || i.impact >= 4));
   
+  const markCriticalTransitive = (id: string) => {
+    if (criticalPathIds.has(id)) return;
+    criticalPathIds.add(id);
+    const item = itemMap.get(id);
+    item?.dependsOn?.forEach(depId => markCriticalTransitive(depId));
+  };
+
   for (const urgent of urgentItems) {
-    const root = findBlockingRoot(urgent, itemMap);
-    if (root) criticalPathIds.add(root.id);
-    // Also mark immediate dependencies of urgent items as critical path
-    urgent.dependsOn?.forEach(id => criticalPathIds.add(id));
+    markCriticalTransitive(urgent.id);
   }
 
   // Calculate blocking power for each item
@@ -234,11 +238,11 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (candidates.length === 0) continue;
 
     const urgentThreshold = 2;
-    const isUrgent = entry.daysUntilDue <= urgentThreshold;
+    const isUrgent = entry.daysUntilDue <= urgentThreshold || entry.isCritical;
     
     let target;
     if (isUrgent) {
-      // For urgent tasks, take the earliest possible day
+      // For urgent or critical tasks, take the earliest possible day
       target = candidates[0];
     } else {
       // For non-urgent tasks, try to balance by looking for a day that
