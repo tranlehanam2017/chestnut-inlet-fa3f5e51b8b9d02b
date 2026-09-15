@@ -78,6 +78,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   } else if (daysUntilDue <= 7) {
     score += 36 - daysUntilDue * 4;
     reasons.push(`due in ${daysUntilDue} day(s)`);
+  } else {
+    // Priority decay for distant tasks: slightly reduce score as date recedes
+    const decay = Math.min(daysUntilDue * 0.5, 15);
+    score -= decay;
+    reasons.push(`due in ${daysUntilDue} day(s)`);
   }
 
   const effortPenalty = Math.min(item.effort / 20, 12);
@@ -168,23 +173,25 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
 export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
   const itemMap = itemsToMap(items);
   const plan = buildPlan(items, today);
-  const blockingCounts = new Map<string, number>();
+  const bottleneckWeights = new Map<string, number>();
 
   for (const entry of plan) {
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
+        // Weight the bottleneck by how critical the blocked task is
+        const weight = entry.isCritical ? 5 : 1;
+        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + weight);
       }
     }
   }
 
-  let maxBlocks = 0;
+  let maxWeight = 0;
   let bottleneckId: string | null = null;
 
-  for (const [id, count] of blockingCounts.entries()) {
-    if (count > maxBlocks) {
-      maxBlocks = count;
+  for (const [id, weight] of bottleneckWeights.entries()) {
+    if (weight > maxWeight) {
+      maxWeight = weight;
       bottleneckId = id;
     }
   }
