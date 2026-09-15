@@ -62,7 +62,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>()): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   let score = item.impact * 12;
@@ -111,6 +111,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("on critical path");
   }
 
+  if (blockingPower > 0) {
+    score += blockingPower * 15;
+    reasons.push(`unblocks ${blockingPower} task(s)`);
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   // Critical tasks are those that are overdue or due today AND have high impact (4+),
@@ -140,8 +145,18 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     urgent.dependsOn?.forEach(id => criticalPathIds.add(id));
   }
 
+  // Calculate blocking power for each item
+  const blockingCounts = new Map<string, number>();
+  for (const item of items) {
+    if (item.status === "done") continue;
+    const root = findBlockingRoot(item, itemMap);
+    if (root) {
+      blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
+    }
+  }
+
   return items
-    .map((item) => priorityFor(item, today, itemMap, criticalPathIds))
+    .map((item) => priorityFor(item, today, itemMap, criticalPathIds, blockingCounts.get(item.id) ?? 0))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
 }

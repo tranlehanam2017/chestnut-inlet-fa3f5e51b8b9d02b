@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { importJson } from "../src/core/exchange";
-import { buildPlan, daysBetween, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
+import { buildPlan, daysBetween, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
 import { theme } from "../src/theme";
 import type { LifeRecord } from "../src/types";
 
@@ -47,6 +47,30 @@ describe("planning engine", () => {
     const plan = buildPlan([a, b], "2026-08-19");
     expect(plan.every(e => e.reasons.some(r => r.includes("circular")))).toBe(true);
     expect(plan.every(e => e.isBlocked)).toBe(true);
+  });
+  it("boosts priority of tasks with high blocking power", () => {
+    const root = item({ id: "root", impact: 1 });
+    const child1 = item({ id: "c1", dependsOn: ["root"] });
+    const child2 = item({ id: "c2", dependsOn: ["root"] });
+    const child3 = item({ id: "c3", dependsOn: ["root"] });
+    const standalone = item({ id: "standalone", impact: 2 });
+    
+    const plan = buildPlan([root, child1, child2, child3, standalone], "2026-08-19");
+    const rootEntry = plan.find(e => e.item.id === "root");
+    expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)"))).toBe(true);
+    // root should likely be higher than standalone despite lower impact because of blocking power
+    const standaloneIdx = plan.findIndex(e => e.item.id === "standalone");
+    const rootIdx = plan.findIndex(e => e.item.id === "root");
+    expect(rootIdx).toBeLessThan(standaloneIdx);
+  });
+  it("correctly identifies the bottleneck task", () => {
+    const root = item({ id: "root" });
+    const leaf1 = item({ id: "l1", dependsOn: ["root"] });
+    const leaf2 = item({ id: "l2", dependsOn: ["root"] });
+    const other = item({ id: "other" });
+    const leaf3 = item({ id: "l3", dependsOn: ["other"] });
+    
+    expect(findBottleneck([root, leaf1, leaf2, other, leaf3], "2026-08-19")?.id).toBe("root");
   });
 });
 
