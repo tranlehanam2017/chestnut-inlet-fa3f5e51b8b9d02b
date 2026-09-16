@@ -126,6 +126,15 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`unlocks chain of ${blockingDepth} tasks`);
   }
 
+  // Slack Modifier: Tasks that are distant AND don't block anything are low priority
+  if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
+    score -= 10;
+    reasons.push("has high slack");
+  } else if (daysUntilDue <= 3 && blockingPower > 0) {
+    score += 5;
+    reasons.push("tight window for blocker");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   // Critical tasks are those that are overdue or due today AND have high impact (4+),
