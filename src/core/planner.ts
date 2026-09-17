@@ -281,7 +281,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     return true;
   };
 
-  // Prioritize the most critical blockers first among urgent items
+  // Prioritize high-blocking-power urgent items first
   urgent.sort((a, b) => b.score - a.score).forEach(e => allocate(e, true));
   normal.forEach(e => allocate(e, false));
 
