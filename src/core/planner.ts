@@ -257,30 +257,36 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   const urgent = plan.filter(e => e.daysUntilDue <= 2 || e.isCritical);
   const normal = plan.filter(e => e.daysUntilDue > 2 && !e.isCritical);
 
-  const allocate = (entry: PlanEntry, strictCapacity: boolean) => {
+  const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
     if (entry.isBlocked) return false;
     
+    const limit = strictCapacity ? capacity : capacity * 1.2;
     const candidates = days.filter((day) => {
-      const isFuture = day.date >= today;
-      const limit = strictCapacity ? capacity : capacity * 1.2;
-      return isFuture && (day.used + entry.item.effort <= limit);
+      return day.date >= today && (day.used + entry.item.effort <= limit);
     });
 
     if (candidates.length === 0) return false;
 
-    // Find the day with the most remaining capacity to distribute load evenly
-    const target = candidates.reduce((prev, curr) => {
-      return (capacity - curr.used) > (capacity - prev.used) ? curr : prev;
-    });
+    let target;
+    if (preferEarliest) {
+      // For urgent tasks, take the first available day that fits
+      target = candidates[0];
+    } else {
+      // For normal tasks, distribute load to the day with most remaining capacity
+      target = candidates.reduce((prev, curr) => {
+        return (capacity - curr.used) > (capacity - prev.used) ? curr : prev;
+      });
+    }
 
     target.entries.push(entry);
     target.used += entry.item.effort;
     return true;
   };
 
-  // Prioritize high-blocking-power urgent items first
-  urgent.sort((a, b) => b.score - a.score).forEach(e => allocate(e, true));
-  normal.sort((a, b) => b.score - a.score).forEach(e => allocate(e, false));
+  // Prioritize high-blocking-power urgent items first, preferring the earliest dates
+  urgent.sort((a, b) => b.score - a.score).forEach(e => allocate(e, true, true));
+  // Distribute normal tasks to balance the load
+  normal.sort((a, b) => b.score - a.score).forEach(e => allocate(e, false, false));
 
   return days.map((day) => ({
     ...day,
