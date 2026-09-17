@@ -268,13 +268,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     if (candidates.length === 0) return false;
 
-    const target = strictCapacity 
-      ? candidates[0] 
-      : candidates.reduce((prev, curr) => {
-          const prevSlack = capacity - prev.used;
-          const currSlack = capacity - curr.used;
-          return currSlack > prevSlack ? curr : prev;
-        });
+    // Find the day with the most remaining capacity to distribute load evenly
+    const target = candidates.reduce((prev, curr) => {
+      return (capacity - curr.used) > (capacity - prev.used) ? curr : prev;
+    });
 
     target.entries.push(entry);
     target.used += entry.item.effort;
@@ -283,7 +280,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
   // Prioritize high-blocking-power urgent items first
   urgent.sort((a, b) => b.score - a.score).forEach(e => allocate(e, true));
-  normal.forEach(e => allocate(e, false));
+  normal.sort((a, b) => b.score - a.score).forEach(e => allocate(e, false));
 
   return days.map((day) => ({
     ...day,
