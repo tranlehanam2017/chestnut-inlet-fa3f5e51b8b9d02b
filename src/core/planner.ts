@@ -67,7 +67,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   let score = item.impact * 12;
   
   if (daysUntilDue < 0) {
-    const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 3);
+    // Refine: low impact overdue tasks don't climb as fast as high impact ones
+    const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 2);
     score += overdueBonus;
     reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
   } else if (daysUntilDue === 0) {
@@ -80,6 +81,13 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     const decay = Math.min(daysUntilDue * 0.5, 15);
     score -= decay;
     reasons.push(`due in ${daysUntilDue} day(s)`);
+  }
+
+  // Quick Win bonus: High impact / Low effort ratio
+  const efficiency = item.impact / (item.effort / 60); // impact per hour
+  if (efficiency > 3 && item.impact >= 3) {
+    score += 15;
+    reasons.push("high efficiency (quick win)");
   }
 
   const effortPenalty = Math.min(item.effort / 20, 12);
