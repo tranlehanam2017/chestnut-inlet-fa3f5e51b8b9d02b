@@ -66,6 +66,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const reasons: string[] = [];
   let score = item.impact * 12;
   
+  // Effort-adjusted urgency: High effort tasks are effectively due sooner
+  const effortLeadDays = Math.floor(item.effort / 120); // Every 2 hours of work adds 1 'lead day' urgency
+  const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
+
   if (daysUntilDue < 0) {
     // Refine: low impact overdue tasks don't climb as fast as high impact ones
     const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 2);
@@ -81,6 +85,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     const decay = Math.min(daysUntilDue * 0.5, 15);
     score -= decay;
     reasons.push(`due in ${daysUntilDue} day(s)`);
+  }
+
+  if (effortLeadDays > 0 && daysUntilDue > 0) {
+    const leadBonus = effortLeadDays * 5;
+    score += leadBonus;
+    reasons.push(`substantial effort (${effortLeadDays}d lead)`);
   }
 
   // Quick Win bonus: High impact / Low effort ratio
@@ -146,7 +156,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
-  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3);
+  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4);
 
   return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical };
 }
