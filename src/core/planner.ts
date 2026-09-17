@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   let score = item.impact * 12;
@@ -156,9 +156,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
-  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4);
+  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
 
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical };
+  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical, slack };
 }
 
 function itemsToMap(items: any): Map<string, LifeRecord> {
@@ -208,6 +208,27 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     return maxDepth;
   };
 
+  // Simple slack calculation: days until due minus (estimated total duration of this and its ancestors)
+  // In a real CPM this would be more complex, but for this tool, we use an approximation based on lead days.
+  const slackCache = new Map<string, number>();
+  const calculateSlack = (id: string): number => {
+    if (slackCache.has(id)) return slackCache.get(id)!;
+    const item = itemMap.get(id);
+    if (!item) return 0;
+    const due = daysBetween(today, item.dueDate);
+    const lead = Math.floor(item.effort / 120);
+    let slack = due - lead;
+    // Dependencies also reduce slack
+    item.dependsOn?.forEach(depId => {
+      const dep = itemMap.get(depId);
+      if (dep && dep.status !== "done") {
+        slack -= Math.floor(dep.effort / 120);
+      }
+    });
+    slackCache.set(id, slack);
+    return slack;
+  };
+
   return items
     .map((item) => priorityFor(
       item, 
@@ -215,7 +236,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       itemMap, 
       criticalPathIds, 
       blockingCounts.get(item.id) ?? 0, 
-      getDepth(item.id)
+      getDepth(item.id),
+      calculateSlack(item.id)
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));

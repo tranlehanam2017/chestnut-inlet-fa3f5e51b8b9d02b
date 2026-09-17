@@ -33,6 +33,7 @@ export interface PlanEntry {
   daysUntilDue: number;
   isBlocked: boolean;
   isCritical: boolean;
+  slack: number;
 }
 
 export interface PlanSummary {
