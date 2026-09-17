@@ -92,11 +92,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (item.status === "done") score = -1;
 
-  const isBlocked = item.dependsOn?.some(depId => {
+  const blockers = item.dependsOn?.filter(depId => {
     const dep = allItems.get(depId);
     return dep && dep.status !== "done";
-  }) ?? false;
+  }) ?? [];
 
+  const isBlocked = blockers.length > 0;
   const isCircular = hasCycle(item.id, allItems);
 
   if (isCircular) {
@@ -104,8 +105,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("circular dependency detected");
   } else if (isBlocked) {
     score -= 100;
-    const root = findBlockingRoot(item, allItems);
-    reasons.push(root ? `blocked by "${root.title}"` : "blocked by dependency");
+    if (blockers.length > 1) {
+      reasons.push(`blocked by ${blockers.length} task(s)`);
+    } else {
+      const root = findBlockingRoot(item, allItems);
+      reasons.push(root ? `blocked by "${root.title}"` : "blocked by dependency");
+    }
   }
 
   if (criticalPathIds.has(item.id)) {
