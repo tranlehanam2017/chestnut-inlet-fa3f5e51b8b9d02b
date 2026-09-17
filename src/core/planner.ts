@@ -54,7 +54,6 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
     
-    // Recursively find the root of this dependency chain
     const root = findBlockingRoot(dep, allItems);
     if (root) return root;
     return dep;
@@ -68,7 +67,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   let score = item.impact * 12;
   
   if (daysUntilDue < 0) {
-    // Refined: High impact overdue tasks get a steeper priority climb
     const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 3);
     score += overdueBonus;
     reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
@@ -79,7 +77,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     score += 36 - daysUntilDue * 4;
     reasons.push(`due in ${daysUntilDue} day(s)`);
   } else {
-    // Priority decay for distant tasks: slightly reduce score as date recedes
     const decay = Math.min(daysUntilDue * 0.5, 15);
     score -= decay;
     reasons.push(`due in ${daysUntilDue} day(s)`);
@@ -126,7 +123,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`unlocks chain of ${blockingDepth} tasks`);
   }
 
-  // Slack Modifier: Tasks that are distant AND don't block anything are low priority
   if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
     score -= 10;
     reasons.push("has high slack");
@@ -137,8 +133,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
-  // Critical tasks are those that are overdue or due today AND have high impact (4+),
-  // or are significantly overdue regardless of impact.
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3);
 
   return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical };
@@ -153,7 +147,6 @@ function itemsToMap(items: any): Map<string, LifeRecord> {
 export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
   const itemMap = itemsToMap(items);
   
-  // Identify critical path: tasks that block critical or high-impact urgent tasks
   const criticalPathIds = new Set<string>();
   const urgentItems = items.filter(i => i.status !== "done" && (daysBetween(today, i.dueDate) <= 0 || i.impact >= 4));
   
@@ -168,7 +161,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     markCriticalTransitive(urgent.id);
   }
 
-  // Calculate blocking power for each item
   const blockingCounts = new Map<string, number>();
   for (const item of items) {
     if (item.status === "done") continue;
@@ -178,7 +170,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     }
   }
 
-  // Calculate blocking depth (max transitive distance to a leaf)
   const depthCache = new Map<string, number>();
   const getDepth = (id: string): number => {
     if (depthCache.has(id)) return depthCache.get(id)!;
@@ -207,10 +198,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
 }
 
-/**
- * Identifies the 'bottleneck' task: the task that blocks the most high-priority
- * items and is itself not blocked.
- */
 export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
   const itemMap = itemsToMap(items);
   const plan = buildPlan(items, today);
@@ -220,7 +207,6 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        // Weight the bottleneck by how critical the blocked task is
         const weight = entry.isCritical ? 5 : 1;
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + weight);
       }
@@ -263,9 +249,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   
   const plan = buildPlan(items, today);
   
-  // Separate tasks to allow a two-pass allocation
-  // Pass 1: Urgent/Critical tasks get first dibs on the earliest possible slot
-  // Pass 2: Normal tasks try to balance load or fit into remaining gaps
   const urgent = plan.filter(e => e.daysUntilDue <= 2 || e.isCritical);
   const normal = plan.filter(e => e.daysUntilDue > 2 && !e.isCritical);
 
@@ -280,11 +263,13 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     if (candidates.length === 0) return false;
 
-    // For urgent tasks: earliest possible
-    // For normal tasks: balance by choosing day with lowest current load
     const target = strictCapacity 
       ? candidates[0] 
-      : candidates.reduce((prev, curr) => (curr.used < prev.used) ? curr : prev);
+      : candidates.reduce((prev, curr) => {
+          const prevSlack = capacity - prev.used;
+          const currSlack = capacity - curr.used;
+          return currSlack > prevSlack ? curr : prev;
+        });
 
     target.entries.push(entry);
     target.used += entry.item.effort;
