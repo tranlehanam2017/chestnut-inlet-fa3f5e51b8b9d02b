@@ -302,13 +302,17 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   }));
   
   const plan = buildPlan(items, today);
-  
-  const urgent = plan.filter(e => e.daysUntilDue <= 2 || e.isCritical);
-  const normal = plan.filter(e => e.daysUntilDue > 2 && !e.isCritical);
+  const allocatedIds = new Set<string>();
 
   const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
-    if (entry.isBlocked) return false;
-    
+    // Ensure all dependencies are allocated first
+    if (entry.item.dependsOn) {
+      for (const depId of entry.item.dependsOn) {
+        const dep = items.find(i => i.id === depId);
+        if (dep && dep.status !== "done" && !allocatedIds.has(depId)) return false;
+      }
+    }
+
     const limit = strictCapacity ? capacity : capacity * 1.2;
     const candidates = days.filter((day) => {
       return day.date >= today && (day.used + entry.item.effort <= limit);
@@ -318,10 +322,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     let target;
     if (preferEarliest) {
-      // For urgent tasks, take the first available day that fits
       target = candidates[0];
     } else {
-      // For normal tasks, distribute load to the day with most remaining capacity
       target = candidates.reduce((prev, curr) => {
         return (capacity - curr.used) > (capacity - prev.used) ? curr : prev;
       });
@@ -329,13 +331,43 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     target.entries.push(entry);
     target.used += entry.item.effort;
+    allocatedIds.add(entry.item.id);
     return true;
   };
 
-  // Prioritize high-blocking-power urgent items first, preferring the earliest dates
-  urgent.sort((a, b) => b.score - a.score).forEach(e => allocate(e, true, true));
-  // Distribute normal tasks to balance the load
-  normal.sort((a, b) => b.score - a.score).forEach(e => allocate(e, false, false));
+  // Multiple passes to handle dependency chains
+  let changed = true;
+  let pass = 0;
+  const remaining = [...plan];
+
+  while (changed && pass < 10 && remaining.length > 0) {
+    changed = false;
+    pass++;
+    
+    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical);
+    const normal = remaining.filter(e => e.daysUntilDue > 2 && !e.isCritical);
+
+    // Process urgent
+    urgent.sort((a, b) => b.score - a.score).forEach(e => {
+      if (allocate(e, true, true)) {
+        changed = true;
+      }
+    });
+
+    // Process normal
+    normal.sort((a, b) => b.score - a.score).forEach(e => {
+      if (allocate(e, false, false)) {
+        changed = true;
+      }
+    });
+
+    // Update remaining list
+    for (let i = remaining.length - 1; i >= 0; i--) {
+      if (allocatedIds.has(remaining[i].item.id)) {
+        remaining.splice(i, 1);
+      }
+    }
+  }
 
   return days.map((day) => ({
     ...day,
