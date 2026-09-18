@@ -108,6 +108,15 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("already in progress");
   }
 
+  // Staleness penalty: tasks not updated for 30+ days are gently pushed down
+  const updatedDate = item.updatedAt.slice(0, 10);
+  const daysSinceUpdate = daysBetween(updatedDate, today);
+  if (daysSinceUpdate > 30) {
+    const stalePenalty = Math.min((daysSinceUpdate - 30) * 0.2, 10);
+    score -= stalePenalty;
+    if (daysSinceUpdate > 60) reasons.push("stale record");
+  }
+
   if (item.status === "done") score = -1;
 
   const blockers = item.dependsOn?.filter(depId => {
