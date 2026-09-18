@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   
@@ -160,6 +160,13 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`unlocks chain of ${blockingDepth} tasks`);
   }
 
+  // Downstream effort boost: Weight the importance of unlocking large chunks of work
+  if (downstreamEffort > 0) {
+    const effortBoost = Math.min(downstreamEffort / 30, 30); // Max 30 point boost for 15+ hours of blocked work
+    score += effortBoost;
+    if (downstreamEffort >= 180) reasons.push(`unlocks substantial work (${Math.round(downstreamEffort/60)}h)`);
+  }
+
   if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
     score -= 10;
     reasons.push("has high slack");
@@ -199,11 +206,14 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   }
 
   const blockingCounts = new Map<string, number>();
+  const downstreamEfforts = new Map<string, number>();
+
   for (const item of items) {
     if (item.status === "done") continue;
     const root = findBlockingRoot(item, itemMap);
     if (root) {
       blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
+      downstreamEfforts.set(root.id, (downstreamEfforts.get(root.id) ?? 0) + item.effort);
     }
   }
 
@@ -251,7 +261,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       criticalPathIds, 
       blockingCounts.get(item.id) ?? 0, 
       getDepth(item.id),
-      calculateSlack(item.id)
+      calculateSlack(item.id),
+      downstreamEfforts.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
