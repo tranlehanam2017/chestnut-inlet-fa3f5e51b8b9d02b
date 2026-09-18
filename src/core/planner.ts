@@ -349,17 +349,18 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical);
-    const normal = remaining.filter(e => e.daysUntilDue > 2 && !e.isCritical);
+    // Urgent includes critical slack (slack <= 0)
+    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0);
+    const normal = remaining.filter(e => e.daysUntilDue > 2 && !e.isCritical && e.slack > 0);
 
-    // Process urgent
+    // Process urgent: strict capacity, prefer earliest to clear blockages
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) {
         changed = true;
       }
     });
 
-    // Process normal
+    // Process normal: relaxed capacity, balance load
     normal.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, false, false)) {
         changed = true;
