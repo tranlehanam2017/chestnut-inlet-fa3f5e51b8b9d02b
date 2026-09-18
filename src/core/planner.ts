@@ -64,7 +64,10 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
 export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
-  let score = item.impact * 12;
+  
+  // Non-linear impact weighting: High impact (4, 5) tasks are significantly more critical
+  const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
+  let score = impactWeight;
   
   // Effort-adjusted urgency: High effort tasks are effectively due sooner
   const effortLeadDays = Math.floor(item.effort / 120); // Every 2 hours of work adds 1 'lead day' urgency
@@ -141,7 +144,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (criticalPathIds.has(item.id)) {
-    score += 40;
+    // Critical path boost is higher when we are close to the deadline
+    const criticalityBoost = daysUntilDue <= 3 ? 60 : 40;
+    score += criticalityBoost;
     reasons.push("on critical path");
   }
 
