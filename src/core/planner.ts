@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   
@@ -174,6 +174,13 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     if (downstreamEffort >= 180) reasons.push(`unlocks substantial work (${Math.round(downstreamEffort/60)}h)`);
   }
 
+  // Dependency Value boost: High impact tasks waiting on this task
+  if (dependencyValue > 0) {
+    const valueBoost = Math.min(dependencyValue * 5, 40);
+    score += valueBoost;
+    if (dependencyValue >= 10) reasons.push("unlocks high-value tasks");
+  }
+
   if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
     score -= 10;
     reasons.push("has high slack");
@@ -214,6 +221,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
 
   const blockingCounts = new Map<string, number>();
   const downstreamEfforts = new Map<string, number>();
+  const dependencyValues = new Map<string, number>();
 
   for (const item of items) {
     if (item.status === "done") continue;
@@ -221,6 +229,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     if (root) {
       blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
       downstreamEfforts.set(root.id, (downstreamEfforts.get(root.id) ?? 0) + item.effort);
+      dependencyValues.set(root.id, (dependencyValues.get(root.id) ?? 0) + item.impact);
     }
   }
 
@@ -269,7 +278,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       blockingCounts.get(item.id) ?? 0, 
       getDepth(item.id),
       calculateSlack(item.id),
-      downstreamEfforts.get(item.id) ?? 0
+      downstreamEfforts.get(item.id) ?? 0,
+      dependencyValues.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
