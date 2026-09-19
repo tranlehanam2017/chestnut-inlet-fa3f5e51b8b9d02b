@@ -256,7 +256,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   };
 
   // Simple slack calculation: days until due minus (estimated total duration of this and its ancestors)
-  // In a real CPM this would be more complex, but for this tool, we use an approximation based on lead days.
+  // Enhanced: Impact-weighting the slack. High impact tasks with low slack are more urgent.
   const slackCache = new Map<string, number>();
   const calculateSlack = (id: string): number => {
     if (slackCache.has(id)) return slackCache.get(id)!;
@@ -272,8 +272,12 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         slack -= Math.floor(dep.effort / 120);
       }
     });
-    slackCache.set(id, slack);
-    return slack;
+    
+    // High impact adjustment: if impact is high, we treat slack as effectively tighter
+    const adjustedSlack = item.impact >= 4 ? slack - 1 : slack;
+    
+    slackCache.set(id, adjustedSlack);
+    return adjustedSlack;
   };
 
   return items
@@ -384,9 +388,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    // Urgent includes critical slack (slack <= 0)
-    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0);
-    const normal = remaining.filter(e => e.daysUntilDue > 2 && !e.isCritical && e.slack > 0);
+    // Urgent includes critical slack (slack <= 0) and high-impact work
+    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4);
+    const normal = remaining.filter(e => !urgent.includes(e));
 
     // Process urgent: strict capacity, prefer earliest to clear blockages
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
