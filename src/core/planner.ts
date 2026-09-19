@@ -103,7 +103,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   // Quick Win bonus: High impact / Low effort ratio
-  // Refined: use Math.max to avoid division by zero and tune threshold
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
   if (efficiency > 4 && item.impact >= 3) {
     score += 15;
@@ -118,7 +117,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("already in progress");
   }
 
-  // Staleness penalty: tasks not updated for 30+ days are gently pushed down
+  // Staleness penalty
   const updatedDate = item.updatedAt.slice(0, 10);
   const daysSinceUpdate = daysBetween(updatedDate, today);
   if (daysSinceUpdate > 30) {
@@ -151,9 +150,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (criticalPathIds.has(item.id)) {
-    // Critical path boost is higher when we are close to the deadline
-    const criticalityBoost = daysUntilDue <= 3 ? 60 : 40;
-    score += criticalityBoost;
+    // Critical path boost scales with the depth of the chain it unlocks
+    const baseBoost = daysUntilDue <= 3 ? 60 : 40;
+    const depthMultiplier = Math.min(blockingDepth * 2, 20);
+    score += baseBoost + depthMultiplier;
     reasons.push("on critical path");
   }
 
@@ -167,14 +167,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`unlocks chain of ${blockingDepth} tasks`);
   }
 
-  // Downstream effort boost: Weight the importance of unlocking large chunks of work
   if (downstreamEffort > 0) {
-    const effortBoost = Math.min(downstreamEffort / 30, 30); // Max 30 point boost for 15+ hours of blocked work
+    const effortBoost = Math.min(downstreamEffort / 30, 30);
     score += effortBoost;
     if (downstreamEffort >= 180) reasons.push(`unlocks substantial work (${Math.round(downstreamEffort/60)}h)`);
   }
 
-  // Dependency Value boost: High impact tasks waiting on this task
   if (dependencyValue > 0) {
     const valueBoost = Math.min(dependencyValue * 5, 40);
     score += valueBoost;
@@ -189,8 +187,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("tight window for blocker");
   }
 
-  // Criticality Multiplier: Zero or negative slack on high-impact tasks
-  // This ensures that critical path blockers with no breathing room leapfrog other tasks
   if (slack <= 0 && item.impact >= 4) {
     score *= 1.2;
     reasons.push("critical path urgency");
@@ -255,8 +251,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     return maxDepth;
   };
 
-  // Simple slack calculation: days until due minus (estimated total duration of this and its ancestors)
-  // Enhanced: Impact-weighting the slack. High impact tasks with low slack are more urgent.
   const slackCache = new Map<string, number>();
   const calculateSlack = (id: string): number => {
     if (slackCache.has(id)) return slackCache.get(id)!;
@@ -265,17 +259,13 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const due = daysBetween(today, item.dueDate);
     const lead = Math.floor(item.effort / 120);
     let slack = due - lead;
-    // Dependencies also reduce slack
     item.dependsOn?.forEach(depId => {
       const dep = itemMap.get(depId);
       if (dep && dep.status !== "done") {
         slack -= Math.floor(dep.effort / 120);
       }
     });
-    
-    // High impact adjustment: if impact is high, we treat slack as effectively tighter
     const adjustedSlack = item.impact >= 4 ? slack - 1 : slack;
-    
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
@@ -349,7 +339,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   const allocatedIds = new Set<string>();
 
   const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
-    // Ensure all dependencies are allocated first
     if (entry.item.dependsOn) {
       for (const depId of entry.item.dependsOn) {
         const dep = items.find(i => i.id === depId);
@@ -379,7 +368,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     return true;
   };
 
-  // Multiple passes to handle dependency chains
   let changed = true;
   let pass = 0;
   const remaining = [...plan];
@@ -388,25 +376,21 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    // Urgent includes critical slack (slack <= 0) and high-impact work
     const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4);
     const normal = remaining.filter(e => !urgent.includes(e));
 
-    // Process urgent: strict capacity, prefer earliest to clear blockages
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) {
         changed = true;
       }
     });
 
-    // Process normal: relaxed capacity, balance load
     normal.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, false, false)) {
         changed = true;
       }
     });
 
-    // Update remaining list
     for (let i = remaining.length - 1; i >= 0; i--) {
       if (allocatedIds.has(remaining[i].item.id)) {
         remaining.splice(i, 1);
