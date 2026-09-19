@@ -69,6 +69,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
   let score = impactWeight;
   
+  // Domain boost: Prioritize Health to ensure wellbeing during trip prep
+  if (item.category === "Health") {
+    score += 10;
+    reasons.push("wellness priority");
+  }
+
   // Effort-adjusted urgency: High effort tasks are effectively due sooner
   const effortLeadDays = Math.floor(item.effort / 120); // Every 2 hours of work adds 1 'lead day' urgency
   const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
@@ -97,8 +103,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   // Quick Win bonus: High impact / Low effort ratio
-  const efficiency = item.impact / (item.effort / 60); // impact per hour
-  if (efficiency > 3 && item.impact >= 3) {
+  // Refined: use Math.max to avoid division by zero and tune threshold
+  const efficiency = item.impact / (Math.max(1, item.effort) / 60);
+  if (efficiency > 4 && item.impact >= 3) {
     score += 15;
     reasons.push("high efficiency (quick win)");
   }
