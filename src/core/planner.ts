@@ -189,6 +189,13 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("tight window for blocker");
   }
 
+  // Criticality Multiplier: Zero or negative slack on high-impact tasks
+  // This ensures that critical path blockers with no breathing room leapfrog other tasks
+  if (slack <= 0 && item.impact >= 4) {
+    score *= 1.2;
+    reasons.push("critical path urgency");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
