@@ -65,22 +65,18 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   
-  // Non-linear impact weighting: High impact (4, 5) tasks are significantly more critical
   const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
   let score = impactWeight;
   
-  // Domain boost: Prioritize Health to ensure wellbeing during trip prep
   if (item.category === "Health") {
     score += 10;
     reasons.push("wellness priority");
   }
 
-  // Effort-adjusted urgency: High effort tasks are effectively due sooner
-  const effortLeadDays = Math.floor(item.effort / 120); // Every 2 hours of work adds 1 'lead day' urgency
+  const effortLeadDays = Math.floor(item.effort / 120);
   const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
 
   if (daysUntilDue < 0) {
-    // Refine: low impact overdue tasks don't climb as fast as high impact ones
     const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 2);
     score += overdueBonus;
     reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
@@ -102,7 +98,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`substantial effort (${effortLeadDays}d lead)`);
   }
 
-  // Quick Win bonus: High impact / Low effort ratio
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
   if (efficiency > 4 && item.impact >= 3) {
     score += 15;
@@ -117,7 +112,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("already in progress");
   }
 
-  // Staleness penalty
   const updatedDate = item.updatedAt.slice(0, 10);
   const daysSinceUpdate = daysBetween(updatedDate, today);
   if (daysSinceUpdate > 30) {
@@ -150,8 +144,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (criticalPathIds.has(item.id)) {
-    // Critical path boost scales with the depth of the chain it unlocks
-    const baseBoost = daysUntilDue <= 3 ? 60 : 40;
+    const baseBoost = daysUntilDue <= 2 ? 80 : (daysUntilDue <= 5 ? 50 : 30);
     const depthMultiplier = Math.min(blockingDepth * 2, 20);
     score += baseBoost + depthMultiplier;
     reasons.push("on critical path");
@@ -265,7 +258,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         slack -= Math.floor(dep.effort / 120);
       }
     });
-    const adjustedSlack = item.impact >= 4 ? slack - 1 : slack;
+    const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
+    const adjustedSlack = slack - impactAdjustment;
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
@@ -357,8 +351,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
-      // Balanced distribution: prefer the day with the lowest current load,
-      // but if there's a tie, pick the earliest one.
       target = candidates.reduce((prev, curr) => {
         return curr.used < prev.used ? curr : prev;
       });
@@ -378,7 +370,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    // Refine: Hard-stop priority for tasks with zero or negative slack
     const critical = remaining.filter(e => e.slack <= 0 && e.item.impact >= 4);
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
@@ -395,7 +386,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       }
     });
 
-    // Normal tasks: prioritize based on impact/dueDate proximity while balancing
     normal.sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate)).forEach(e => {
       const preferEarliest = e.daysUntilDue <= 4 || e.item.impact >= 4;
       if (allocate(e, false, preferEarliest)) {
