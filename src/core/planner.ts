@@ -377,8 +377,16 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    const urgent = remaining.filter(e => e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4);
-    const normal = remaining.filter(e => !urgent.includes(e));
+    // Refine: Hard-stop priority for tasks with zero or negative slack
+    const critical = remaining.filter(e => e.slack <= 0 && e.item.impact >= 4);
+    const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
+    const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
+
+    critical.sort((a, b) => b.score - a.score).forEach(e => {
+      if (allocate(e, false, true)) { // Zero-slack critical items can force overload on today/tomorrow
+        changed = true;
+      }
+    });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) {
