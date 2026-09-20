@@ -357,7 +357,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
-      // Prefer the day with the lowest current load to balance workload
+      // Balanced distribution: prefer the day with the lowest current load,
+      // but if there's a tie, pick the earliest one.
       target = candidates.reduce((prev, curr) => {
         return curr.used < prev.used ? curr : prev;
       });
@@ -383,7 +384,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
     critical.sort((a, b) => b.score - a.score).forEach(e => {
-      if (allocate(e, false, true)) { // Zero-slack critical items can force overload on today/tomorrow
+      if (allocate(e, false, true)) {
         changed = true;
       }
     });
@@ -394,8 +395,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       }
     });
 
-    normal.sort((a, b) => b.score - a.score).forEach(e => {
-      if (allocate(e, false, false)) {
+    // Normal tasks: prioritize based on impact/dueDate proximity while balancing
+    normal.sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate)).forEach(e => {
+      const preferEarliest = e.daysUntilDue <= 4 || e.item.impact >= 4;
+      if (allocate(e, false, preferEarliest)) {
         changed = true;
       }
     });
