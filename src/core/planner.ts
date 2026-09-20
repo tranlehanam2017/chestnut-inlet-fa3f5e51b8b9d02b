@@ -181,7 +181,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (slack <= 0 && item.impact >= 4) {
-    score *= 1.2;
+    const urgencyMultiplier = 1.2 + (item.impact - 4) * 0.1;
+    score *= urgencyMultiplier;
     reasons.push("critical path urgency");
   }
 
