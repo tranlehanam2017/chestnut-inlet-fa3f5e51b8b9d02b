@@ -357,8 +357,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
+      // Prefer the day with the lowest current load to balance workload
       target = candidates.reduce((prev, curr) => {
-        return (capacity - curr.used) > (capacity - prev.used) ? curr : prev;
+        return curr.used < prev.used ? curr : prev;
       });
     }
 
