@@ -290,7 +290,8 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        const weight = entry.isCritical ? 5 : 1;
+        // Bottleneck weight now considers the impact of the blocked task
+        const weight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + weight);
       }
     }
