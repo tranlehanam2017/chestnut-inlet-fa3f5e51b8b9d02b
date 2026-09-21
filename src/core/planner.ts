@@ -387,7 +387,12 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       }
     });
 
-    normal.sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate)).forEach(e => {
+    normal.sort((a, b) => {
+      // Value-Density: Prioritize high impact / low effort (WSJF principle) for normal tasks
+      const aDensity = a.item.impact / a.item.effort;
+      const bDensity = b.item.impact / b.item.effort;
+      return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
+    }).forEach(e => {
       const preferEarliest = e.daysUntilDue <= 4 || e.item.impact >= 4;
       if (allocate(e, false, preferEarliest)) {
         changed = true;
