@@ -253,14 +253,18 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const item = itemMap.get(id);
     if (!item) return 0;
     const due = daysBetween(today, item.dueDate);
-    const lead = Math.floor(item.effort / 120);
-    let slack = due - lead;
+    
+    let chainEffort = item.effort;
     item.dependsOn?.forEach(depId => {
       const dep = itemMap.get(depId);
       if (dep && dep.status !== "done") {
-        slack -= Math.floor(dep.effort / 120);
+        chainEffort += dep.effort;
       }
     });
+    
+    const effortDays = Math.ceil(chainEffort / 480);
+    let slack = due - effortDays;
+    
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     const adjustedSlack = slack - impactAdjustment;
     slackCache.set(id, adjustedSlack);
@@ -356,7 +360,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       target = candidates[0];
     } else {
       target = candidates.reduce((prev, curr) => {
-        return curr.used < prev.used ? curr : prev;
+        const aGap = capacity - prev.used;
+        const bGap = capacity - curr.used;
+        return (bGap > aGap || (bGap === aGap && curr.date < prev.date)) ? curr : prev;
       });
     }
 
