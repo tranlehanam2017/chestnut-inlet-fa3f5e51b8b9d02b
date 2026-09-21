@@ -292,7 +292,6 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        // Bottleneck weight now considers the impact of the blocked task and the volume of work it holds back
         const impactWeight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight);
@@ -392,7 +391,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     });
 
     normal.sort((a, b) => {
-      // Value-Density: Prioritize high impact / low effort (WSJF principle) for normal tasks
       const aDensity = a.item.impact / a.item.effort;
       const bDensity = b.item.impact / b.item.effort;
       return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
