@@ -84,7 +84,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     score += 45;
     reasons.push("due today");
   } else if (daysUntilDue <= 7) {
-    score += 36 - daysUntilDue * 4;
+    const nearTermBonus = daysUntilDue <= 2 && item.impact >= 4 ? 20 : 0;
+    score += (36 - daysUntilDue * 4) + nearTermBonus;
+    if (nearTermBonus > 0) reasons.push("urgent high-impact task");
     reasons.push(`due in ${daysUntilDue} day(s)`);
   } else {
     const decay = Math.min(daysUntilDue * 0.5, 15);
@@ -290,9 +292,10 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        // Bottleneck weight now considers the impact of the blocked task
-        const weight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
-        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + weight);
+        // Bottleneck weight now considers the impact of the blocked task and the volume of work it holds back
+        const impactWeight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
+        const volumeWeight = entry.item.effort / 60;
+        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight);
       }
     }
   }
