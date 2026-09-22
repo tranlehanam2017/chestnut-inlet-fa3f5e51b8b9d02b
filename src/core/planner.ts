@@ -381,11 +381,13 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
+    // Prioritize tasks on the critical path with zero or negative slack first
     const critical = remaining.filter(e => e.slack <= 0 && e.item.impact >= 4);
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
-    critical.sort((a, b) => b.score - a.score).forEach(e => {
+    // Critical path tasks are allocated with more flexibility (soft limit) to ensure they move
+    critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
       if (allocate(e, false, true)) {
         changed = true;
       }
