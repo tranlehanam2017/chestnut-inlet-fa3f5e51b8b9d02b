@@ -77,9 +77,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
 
   if (daysUntilDue < 0) {
-    const overdueBonus = 55 + Math.min(Math.abs(daysUntilDue), 14) * (item.impact >= 4 ? 5 : 2);
+    const overdueDays = Math.abs(daysUntilDue);
+    const overdueBonus = 55 + Math.min(overdueDays, 14) * (item.impact * 2);
     score += overdueBonus;
-    reasons.push(`${Math.abs(daysUntilDue)} day(s) overdue`);
+    reasons.push(`${overdueDays} day(s) overdue`);
   } else if (daysUntilDue === 0) {
     score += 45;
     reasons.push("due today");
@@ -102,7 +103,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
   if (efficiency > 4 && item.impact >= 3) {
-    score += 15;
+    score *= 1.15;
     reasons.push("high efficiency (quick win)");
   }
 
