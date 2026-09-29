@@ -368,6 +368,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
+      // Load balancing: find the day with the most remaining capacity
       target = candidates.reduce((prev, curr) => {
         const aGap = capacity - prev.used;
         const bGap = capacity - curr.used;
@@ -393,18 +394,21 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
+    // 1. Critical: strictly as early as possible
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
       if (allocate(e, false, true)) {
         changed = true;
       }
     });
 
+    // 2. Urgent: as early as possible, respecting capacity more strictly
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) {
         changed = true;
       }
     });
 
+    // 3. Normal: balance across the week, unless due very soon
     normal.sort((a, b) => {
       const aDensity = a.item.impact / a.item.effort;
       const bDensity = b.item.impact / b.item.effort;
