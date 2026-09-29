@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   
@@ -189,6 +189,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("critical path urgency");
   }
 
+  if (isPrimaryBottleneck) {
+    score += 40;
+    reasons.push("primary project bottleneck");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
@@ -232,6 +237,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       dependencyValues.set(root.id, (dependencyValues.get(root.id) ?? 0) + item.impact);
     }
   }
+
+  const bottleneckId = findBottleneck(items, today)?.id;
 
   const depthCache = new Map<string, number>();
   const getDepth = (id: string): number => {
@@ -282,7 +289,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       getDepth(item.id),
       calculateSlack(item.id),
       downstreamEfforts.get(item.id) ?? 0,
-      dependencyValues.get(item.id) ?? 0
+      dependencyValues.get(item.id) ?? 0,
+      item.id === bottleneckId
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
@@ -381,12 +389,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     changed = false;
     pass++;
     
-    // Prioritize tasks on the critical path with zero or negative slack first
     const critical = remaining.filter(e => e.slack <= 0 && e.item.impact >= 4);
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
-    // Critical path tasks are allocated with more flexibility (soft limit) to ensure they move
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
       if (allocate(e, false, true)) {
         changed = true;
