@@ -368,6 +368,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
+      // For non-urgent tasks, distribute to the day with the most remaining capacity
       target = candidates.reduce((prev, curr) => {
         const aGap = capacity - prev.used;
         const bGap = capacity - curr.used;
@@ -393,14 +394,17 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
+    // 1. Critical tasks get first dibs, regardless of strict capacity, forced to earliest possible day
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
       if (allocate(e, false, true)) changed = true;
     });
 
+    // 2. Urgent tasks allocated to earliest day, honoring strict capacity if possible
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) changed = true;
     });
 
+    // 3. Normal tasks are load-balanced across the remaining space
     normal.sort((a, b) => {
       const aDensity = a.item.impact / a.item.effort;
       const bDensity = b.item.impact / b.item.effort;
