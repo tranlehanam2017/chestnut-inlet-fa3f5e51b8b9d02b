@@ -194,6 +194,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("primary project bottleneck");
   }
 
+  // Focus Multiplier: High impact tasks that aren't critical yet still deserve a boost to prevent them being pushed to the end
+  if (item.impact >= 5 && daysUntilDue > 2 && daysUntilDue <= 14) {
+    score *= 1.1;
+    reasons.push("high-impact focus");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
@@ -368,7 +374,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (preferEarliest) {
       target = candidates[0];
     } else {
-      // For non-urgent tasks, distribute to the day with the most remaining capacity
       target = candidates.reduce((prev, curr) => {
         const aGap = capacity - prev.used;
         const bGap = capacity - curr.used;
@@ -394,23 +399,21 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
-    // 1. Critical tasks get first dibs, regardless of strict capacity, forced to earliest possible day
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
       if (allocate(e, false, true)) changed = true;
     });
 
-    // 2. Urgent tasks allocated to earliest day, honoring strict capacity if possible
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
       if (allocate(e, true, true)) changed = true;
     });
 
-    // 3. Normal tasks are load-balanced across the remaining space
     normal.sort((a, b) => {
       const aDensity = a.item.impact / a.item.effort;
       const bDensity = b.item.impact / b.item.effort;
       return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
     }).forEach(e => {
-      const preferEarliest = e.daysUntilDue <= 4 || e.item.impact >= 4;
+      // Normal tasks now only prefer earliest if they have significant impact or are due very soon
+      const preferEarliest = e.daysUntilDue <= 3 || e.item.impact >= 4;
       if (allocate(e, false, preferEarliest)) changed = true;
     });
 
