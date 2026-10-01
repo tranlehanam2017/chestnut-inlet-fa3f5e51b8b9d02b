@@ -71,6 +71,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   if (item.category === "Health") {
     score += 10;
     reasons.push("wellness priority");
+  } else if (item.category === "Documents") {
+    score += 15;
+    reasons.push("administrative critical");
   }
 
   const effortLeadDays = Math.floor(item.effort / 120);
@@ -148,7 +151,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (criticalPathIds.has(item.id)) {
     const baseBoost = daysUntilDue <= 2 ? 80 : (daysUntilDue <= 5 ? 50 : 30);
-    const depthMultiplier = Math.min(blockingDepth * 2, 20);
+    const depthMultiplier = Math.min(blockingDepth * 5, 40); // Increased weight for deep dependency chains
     score += baseBoost + depthMultiplier;
     reasons.push("on critical path");
   }
