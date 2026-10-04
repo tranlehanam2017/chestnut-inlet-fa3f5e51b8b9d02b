@@ -85,7 +85,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (daysUntilDue < 0) {
     const overdueDays = Math.abs(daysUntilDue);
-    const overdueBonus = 55 + Math.min(overdueDays, 14) * (item.impact * 2);
+    // Refined: Non-linear overdue bonus to prevent very old tasks from dominating
+    const overdueBonus = 55 + Math.min(overdueDays, 7) * (item.impact * 2) + (overdueDays > 7 ? (overdueDays - 7) * 2 : 0);
     score += overdueBonus;
     reasons.push(`${overdueDays} day(s) overdue`);
   } else if (daysUntilDue === 0) {
@@ -421,10 +422,12 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
+      // Critical tasks: slightly more lenient capacity to ensure they aren't deferred indefinitely
       if (allocate(e, false, true)) changed = true;
     });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
+      // Urgent tasks: stricter capacity to avoid over-packing the start of the week
       if (allocate(e, true, true)) changed = true;
     });
 
