@@ -151,13 +151,15 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (criticalPathIds.has(item.id)) {
     const baseBoost = daysUntilDue <= 2 ? 80 : (daysUntilDue <= 5 ? 50 : 30);
-    const depthMultiplier = Math.min(blockingDepth * 5, 40); // Increased weight for deep dependency chains
+    const depthMultiplier = Math.min(blockingDepth * 5, 40);
     score += baseBoost + depthMultiplier;
     reasons.push("on critical path");
   }
 
   if (blockingPower > 0) {
-    score += blockingPower * 15;
+    // Refined: Higher weight for blockers of high-impact tasks
+    const blockingWeight = dependencyValue > 10 ? 20 : 15;
+    score += blockingPower * blockingWeight;
     reasons.push(`unblocks ${blockingPower} task(s)`);
   }
 
@@ -187,9 +189,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (slack <= 0 && item.impact >= 4) {
-    const urgencyMultiplier = 1.2 + (item.impact - 4) * 0.1;
+    // Refined: Stronger boost when slack is negative (true urgency)
+    const urgencyMultiplier = slack < 0 ? 1.4 : (1.2 + (item.impact - 4) * 0.1);
     score *= urgencyMultiplier;
-    reasons.push("critical path urgency");
+    reasons.push(slack < 0 ? "extreme critical urgency" : "critical path urgency");
   }
 
   if (isPrimaryBottleneck) {
@@ -197,7 +200,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("primary project bottleneck");
   }
 
-  // Focus Multiplier: High impact tasks that aren't critical yet still deserve a boost to prevent them being pushed to the end
   if (item.impact >= 5 && daysUntilDue > 2 && daysUntilDue <= 14) {
     score *= 1.1;
     reasons.push("high-impact focus");
@@ -415,7 +417,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const bDensity = b.item.impact / b.item.effort;
       return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
     }).forEach(e => {
-      // Normal tasks now only prefer earliest if they have significant impact or are due very soon
       const preferEarliest = e.daysUntilDue <= 3 || e.item.impact >= 4;
       if (allocate(e, false, preferEarliest)) changed = true;
     });
