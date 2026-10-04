@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
   
@@ -79,7 +79,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("logistics priority");
   }
 
-  const effortLeadDays = Math.floor(item.effort / 120);
+  // Refined: Lead time now considers that very large tasks (4h+) need more runway
+  const effortLeadDays = Math.ceil(item.effort / 180);
   const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
 
   if (daysUntilDue < 0) {
@@ -206,6 +207,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("high-impact focus");
   }
 
+  // Cascading Urgency: inheriting priority from urgent descendants
+  if (inheritedUrgency > 0) {
+    score += inheritedUrgency;
+    reasons.push(`urgent descendant pressure`);
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
@@ -239,6 +246,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   const blockingCounts = new Map<string, number>();
   const downstreamEfforts = new Map<string, number>();
   const dependencyValues = new Map<string, number>();
+  const urgencyInheritance = new Map<string, number>();
 
   for (const item of items) {
     if (item.status === "done") continue;
@@ -247,6 +255,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
       downstreamEfforts.set(root.id, (downstreamEfforts.get(root.id) ?? 0) + item.effort);
       dependencyValues.set(root.id, (dependencyValues.get(root.id) ?? 0) + item.impact);
+      
+      // Calculate urgency pressure for the root blocker based on descendant's criticality
+      const pressure = (daysBetween(today, item.dueDate) <= 2) ? 15 : 0;
+      urgencyInheritance.set(root.id, (urgencyInheritance.get(root.id) ?? 0) + pressure);
     }
   }
 
@@ -302,7 +314,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       calculateSlack(item.id),
       downstreamEfforts.get(item.id) ?? 0,
       dependencyValues.get(item.id) ?? 0,
-      item.id === bottleneckId
+      item.id === bottleneckId,
+      urgencyInheritance.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
