@@ -297,8 +297,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const effortDays = Math.ceil(chainEffort / 480);
     let slack = due - effortDays;
     
+    // Refinement: High effort tasks reduce slack more aggressively to ensure they start early
+    const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
-    const adjustedSlack = slack - impactAdjustment;
+    const adjustedSlack = slack - impactAdjustment - complexityPenalty;
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
