@@ -394,9 +394,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       target = candidates[0];
     } else {
       target = candidates.reduce((prev, curr) => {
-        const aGap = capacity - prev.used;
-        const bGap = capacity - curr.used;
-        return (bGap > aGap || (bGap === aGap && curr.date < prev.date)) ? curr : prev;
+        if (curr.used < prev.used) return curr;
+        if (curr.used > prev.used) return prev;
+        return curr.date < prev.date ? curr : prev;
       });
     }
 
