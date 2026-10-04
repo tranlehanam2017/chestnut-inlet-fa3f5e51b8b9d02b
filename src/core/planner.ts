@@ -74,6 +74,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   } else if (item.category === "Documents") {
     score += 15;
     reasons.push("administrative critical");
+  } else if (item.category === "Transport") {
+    score += 5;
+    reasons.push("logistics priority");
   }
 
   const effortLeadDays = Math.floor(item.effort / 120);
@@ -157,7 +160,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (blockingPower > 0) {
-    // Refined: Higher weight for blockers of high-impact tasks
     const blockingWeight = dependencyValue > 10 ? 20 : 15;
     score += blockingPower * blockingWeight;
     reasons.push(`unblocks ${blockingPower} task(s)`);
@@ -189,7 +191,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (slack <= 0 && item.impact >= 4) {
-    // Refined: Stronger boost when slack is negative (true urgency)
     const urgencyMultiplier = slack < 0 ? 1.4 : (1.2 + (item.impact - 4) * 0.1);
     score *= urgencyMultiplier;
     reasons.push(slack < 0 ? "extreme critical urgency" : "critical path urgency");
