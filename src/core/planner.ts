@@ -375,19 +375,28 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   }));
   
   const plan = buildPlan(items, today);
+  const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
 
+  for (const item of items) {
+    if (item.status !== "done") remainingEffort.set(item.id, item.effort);
+  }
+
   const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
+    const itemId = entry.item.id;
+    const effortNeeded = remainingEffort.get(itemId) ?? 0;
+    if (effortNeeded <= 0) return false;
+
     if (entry.item.dependsOn) {
       for (const depId of entry.item.dependsOn) {
-        const dep = items.find(i => i.id === depId);
-        if (dep && dep.status !== "done" && !allocatedIds.has(depId)) return false;
+        const depEffort = remainingEffort.get(depId) ?? 0;
+        if (depEffort > 0) return false;
       }
     }
 
     const limit = strictCapacity ? capacity : capacity * 1.2;
     const candidates = days.filter((day) => {
-      return day.date >= today && (day.used + entry.item.effort <= limit);
+      return day.date >= today && (day.used < limit);
     });
 
     if (candidates.length === 0) return false;
@@ -403,9 +412,22 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       });
     }
 
-    target.entries.push(entry);
-    target.used += entry.item.effort;
-    allocatedIds.add(entry.item.id);
+    const available = limit - target.used;
+    const taken = Math.min(effortNeeded, available);
+    
+    if (taken <= 0) return false;
+
+    if (!target.entries.includes(entry)) {
+      target.entries.push(entry);
+    }
+    
+    target.used += taken;
+    remainingEffort.set(itemId, effortNeeded - taken);
+    
+    if (remainingEffort.get(itemId) === 0) {
+      allocatedIds.add(itemId);
+    }
+
     return true;
   };
 
@@ -413,7 +435,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   let pass = 0;
   const remaining = [...plan];
 
-  while (changed && pass < 10 && remaining.length > 0) {
+  while (changed && pass < 20 && remaining.length > 0) {
     changed = false;
     pass++;
     
@@ -422,12 +444,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
 
     critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
-      // Critical tasks: slightly more lenient capacity to ensure they aren't deferred indefinitely
       if (allocate(e, false, true)) changed = true;
     });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
-      // Urgent tasks: stricter capacity to avoid over-packing the start of the week
       if (allocate(e, true, true)) changed = true;
     });
 
