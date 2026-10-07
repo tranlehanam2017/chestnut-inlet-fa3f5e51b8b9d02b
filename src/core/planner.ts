@@ -256,7 +256,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   const dependencyValues = new Map<string, number>();
   const urgencyInheritance = new Map<string, number>();
 
-  // Transitive propagation: Calculate value from leaves up
   const computeTransitiveValues = (id: string, visited = new Set<string>()) => {
     if (visited.has(id)) return { value: 0, effort: 0, urgency: 0 };
     visited.add(id);
@@ -264,12 +263,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     let totalValue = 0;
     let totalEffort = 0;
     let maxUrgency = 0;
-    let directCount = 0;
 
     for (const item of items) {
       if (item.status === "done") continue;
       if (item.dependsOn?.includes(id)) {
-        directCount++;
         const childStats = computeTransitiveValues(item.id, visited);
         totalValue += item.impact + childStats.value;
         totalEffort += item.effort + childStats.effort;
@@ -283,10 +280,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   for (const item of items) {
     if (item.status === "done") continue;
     const stats = computeTransitiveValues(item.id);
-    
-    // Find direct descendants to set blocking count
     const directDescendants = items.filter(i => i.status !== "done" && i.dependsOn?.includes(item.id)).length;
-    
     blockingCounts.set(item.id, directDescendants);
     downstreamEfforts.set(item.id, stats.effort);
     dependencyValues.set(item.id, stats.value);
@@ -298,7 +292,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   const depthCache = new Map<string, number>();
   const getDepth = (id: string): number => {
     if (depthCache.has(id)) return depthCache.get(id)!;
-    
     let maxDepth = 0;
     for (const item of items) {
       if (item.status === "done") continue;
@@ -328,10 +321,18 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const bufferFactor = chainEffort > 240 ? 1.2 : 1.0;
     const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
     let slack = due - effortDays;
+
+    const windowSize = 7;
+    const overlappingTasks = items.filter(i => 
+      i.status !== "done" && 
+      daysBetween(today, i.dueDate) >= 0 && 
+      daysBetween(today, i.dueDate) <= (due + windowSize)
+    ).length;
+    const densityPenalty = overlappingTasks > 5 ? Math.ceil(overlappingTasks / 5) : 0;
     
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
-    const adjustedSlack = slack - impactAdjustment - complexityPenalty;
+    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty;
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
