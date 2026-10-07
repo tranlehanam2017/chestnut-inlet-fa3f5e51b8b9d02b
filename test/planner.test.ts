@@ -84,6 +84,14 @@ describe("planning engine", () => {
     const daysWithTasks = week.filter(d => d.entries.length > 0);
     expect(daysWithTasks.length).toBeGreaterThan(1);
   });
+  it("identifies and boosts quick wins", () => {
+    const quickWin = item({ id: "qw", effort: 15, impact: 5 });
+    const slowWin = item({ id: "sw", effort: 120, impact: 5 });
+    const plan = buildPlan([quickWin, slowWin], "2026-08-19");
+    const qwEntry = plan.find(e => e.item.id === "qw");
+    expect(qwEntry?.reasons.some(r => r.includes("quick win"))).toBe(true);
+    expect(plan[0].item.id).toBe("qw");
+  });
 });
 
 describe("JSON exchange boundary", () => {

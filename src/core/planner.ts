@@ -110,7 +110,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
-  if (efficiency > 4 && item.impact >= 3) {
+  const isQuickWin = efficiency > 4 && item.impact >= 3 && item.effort <= 60;
+  if (isQuickWin) {
+    score *= 1.2;
+    reasons.push("🚀 quick win (high value, low effort)");
+  } else if (efficiency > 4 && item.impact >= 3) {
     score *= 1.15;
     reasons.push("high efficiency (quick win)");
   }
