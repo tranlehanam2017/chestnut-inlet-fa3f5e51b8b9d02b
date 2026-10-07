@@ -388,7 +388,8 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
-        const impactWeight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
+        const criticalityMultiplier = entry.isCritical ? 3 : 1;
+        const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
         const chainWeight = getDepth(root.id) * 2;
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight);
@@ -504,7 +505,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
-      const strict = e.item.impact < 4;
+      const strict = e.item.impact < 4 && e.slack > 1;
       if (allocate(e, strict, true)) changed = true;
     });
 
