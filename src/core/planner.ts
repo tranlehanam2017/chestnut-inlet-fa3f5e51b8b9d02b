@@ -256,17 +256,41 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   const dependencyValues = new Map<string, number>();
   const urgencyInheritance = new Map<string, number>();
 
+  // Transitive propagation: Calculate value from leaves up
+  const computeTransitiveValues = (id: string, visited = new Set<string>()) => {
+    if (visited.has(id)) return { value: 0, effort: 0, urgency: 0 };
+    visited.add(id);
+
+    let totalValue = 0;
+    let totalEffort = 0;
+    let maxUrgency = 0;
+    let directCount = 0;
+
+    for (const item of items) {
+      if (item.status === "done") continue;
+      if (item.dependsOn?.includes(id)) {
+        directCount++;
+        const childStats = computeTransitiveValues(item.id, visited);
+        totalValue += item.impact + childStats.value;
+        totalEffort += item.effort + childStats.effort;
+        maxUrgency = Math.max(maxUrgency, (daysBetween(today, item.dueDate) <= 2 ? 15 : 0) + childStats.urgency);
+      }
+    }
+
+    return { value: totalValue, effort: totalEffort, urgency: maxUrgency };
+  };
+
   for (const item of items) {
     if (item.status === "done") continue;
-    const root = findBlockingRoot(item, itemMap);
-    if (root) {
-      blockingCounts.set(root.id, (blockingCounts.get(root.id) ?? 0) + 1);
-      downstreamEfforts.set(root.id, (downstreamEfforts.get(root.id) ?? 0) + item.effort);
-      dependencyValues.set(root.id, (dependencyValues.get(root.id) ?? 0) + item.impact);
-      
-      const pressure = (daysBetween(today, item.dueDate) <= 2) ? 15 : 0;
-      urgencyInheritance.set(root.id, (urgencyInheritance.get(root.id) ?? 0) + pressure);
-    }
+    const stats = computeTransitiveValues(item.id);
+    
+    // Find direct descendants to set blocking count
+    const directDescendants = items.filter(i => i.status !== "done" && i.dependsOn?.includes(item.id)).length;
+    
+    blockingCounts.set(item.id, directDescendants);
+    downstreamEfforts.set(item.id, stats.effort);
+    dependencyValues.set(item.id, stats.value);
+    urgencyInheritance.set(item.id, stats.urgency);
   }
 
   const bottleneckId = findBottleneck(items, today)?.id;
