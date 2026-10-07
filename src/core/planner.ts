@@ -303,7 +303,9 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       }
     });
     
-    const effortDays = Math.ceil(chainEffort / 480);
+    // Refined: High effort tasks incur a buffer penalty to ensure they are prioritized earlier
+    const bufferFactor = chainEffort > 240 ? 1.2 : 1.0;
+    const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
     let slack = due - effortDays;
     
     // Refinement: High effort tasks reduce slack more aggressively to ensure they start early
@@ -337,13 +339,28 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
   const plan = buildPlan(items, today);
   const bottleneckWeights = new Map<string, number>();
 
+  const depthCache = new Map<string, number>();
+  const getDepth = (id: string): number => {
+    if (depthCache.has(id)) return depthCache.get(id)!;
+    let maxDepth = 0;
+    for (const item of items) {
+      if (item.status === "done") continue;
+      if (item.dependsOn?.includes(id)) {
+        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id));
+      }
+    }
+    depthCache.set(id, maxDepth);
+    return maxDepth;
+  };
+
   for (const entry of plan) {
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
         const impactWeight = (entry.isCritical ? 5 : 1) * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
-        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight);
+        const chainWeight = getDepth(root.id) * 2;
+        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight);
       }
     }
   }
