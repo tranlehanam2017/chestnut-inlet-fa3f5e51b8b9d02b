@@ -198,6 +198,14 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(slack < 0 ? "extreme critical urgency" : "critical path urgency");
   }
 
+  // Risk Factor: Large, high-impact tasks that are approaching their slack limit
+  // create a risk of delay that should bubble them up even if not yet 'critical'.
+  if (item.effort > 120 && item.impact >= 3 && slack < 3 && slack > 0) {
+    const riskBoost = (3 - slack) * 15;
+    score += riskBoost;
+    reasons.push("high complexity risk");
+  }
+
   if (isPrimaryBottleneck) {
     score += 40;
     reasons.push("primary project bottleneck");
