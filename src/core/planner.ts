@@ -352,7 +352,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       urgencyInheritance.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
-    .sort((a, b) => b.score - a.score || a.item.dueDate.localeCompare(b.item.dueDate));
+    .sort((a, b) => b.score - a.score || (b.item.impact / b.item.effort) - (a.item.impact / a.item.effort) || a.item.dueDate.localeCompare(b.item.dueDate));
 }
 
 export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
@@ -494,7 +494,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
-      if (allocate(e, true, true)) changed = true;
+      const strict = e.item.impact < 4;
+      if (allocate(e, strict, true)) changed = true;
     });
 
     normal.sort((a, b) => {
