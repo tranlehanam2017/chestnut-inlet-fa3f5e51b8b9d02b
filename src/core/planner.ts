@@ -79,13 +79,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("logistics priority");
   }
 
-  // Refined: Lead time now considers that very large tasks (4h+) need more runway
   const effortLeadDays = Math.ceil(item.effort / 180);
   const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
 
   if (daysUntilDue < 0) {
     const overdueDays = Math.abs(daysUntilDue);
-    // Refined: Non-linear overdue bonus to prevent very old tasks from dominating
     const overdueBonus = 55 + Math.min(overdueDays, 7) * (item.impact * 2) + (overdueDays > 7 ? (overdueDays - 7) * 2 : 0);
     score += overdueBonus;
     reasons.push(`${overdueDays} day(s) overdue`);
@@ -202,8 +200,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(slack < 0 ? "extreme critical urgency" : "critical path urgency");
   }
 
-  // Risk Factor: Large, high-impact tasks that are approaching their slack limit
-  // create a risk of delay that should bubble them up even if not yet 'critical'.
   if (item.effort > 120 && item.impact >= 3 && slack < 3 && slack > 0) {
     const riskBoost = (3 - slack) * 15;
     score += riskBoost;
@@ -220,7 +216,6 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("high-impact focus");
   }
 
-  // Cascading Urgency: inheriting priority from urgent descendants
   if (inheritedUrgency > 0) {
     score += inheritedUrgency;
     reasons.push(`urgent descendant pressure`);
@@ -269,7 +264,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       downstreamEfforts.set(root.id, (downstreamEfforts.get(root.id) ?? 0) + item.effort);
       dependencyValues.set(root.id, (dependencyValues.get(root.id) ?? 0) + item.impact);
       
-      // Calculate urgency pressure for the root blocker based on descendant's criticality
       const pressure = (daysBetween(today, item.dueDate) <= 2) ? 15 : 0;
       urgencyInheritance.set(root.id, (urgencyInheritance.get(root.id) ?? 0) + pressure);
     }
@@ -307,12 +301,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       }
     });
     
-    // Refined: High effort tasks incur a buffer penalty to ensure they are prioritized earlier
     const bufferFactor = chainEffort > 240 ? 1.2 : 1.0;
     const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
     let slack = due - effortDays;
     
-    // Refinement: High effort tasks reduce slack more aggressively to ensure they start early
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     const adjustedSlack = slack - impactAdjustment - complexityPenalty;
