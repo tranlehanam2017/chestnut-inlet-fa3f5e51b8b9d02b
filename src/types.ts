@@ -34,6 +34,7 @@ export interface PlanEntry {
   isBlocked: boolean;
   isCritical: boolean;
   slack: number;
+  estimatedCompletionDate?: string;
 }
 
 export interface PlanSummary {
