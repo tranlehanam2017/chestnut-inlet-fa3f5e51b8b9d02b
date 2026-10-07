@@ -58,7 +58,6 @@ describe("planning engine", () => {
     const plan = buildPlan([root, child1, child2, child3, standalone], "2026-08-19");
     const rootEntry = plan.find(e => e.item.id === "root");
     expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)"))).toBe(true);
-    // root should likely be higher than standalone despite lower impact because of blocking power
     const standaloneIdx = plan.findIndex(e => e.item.id === "standalone");
     const rootIdx = plan.findIndex(e => e.item.id === "root");
     expect(rootIdx).toBeLessThan(standaloneIdx);
@@ -79,8 +78,6 @@ describe("planning engine", () => {
       item({ id: "t3", effort: 30, dueDate: "2026-08-30" }),
     ];
     const week = suggestDailyLoad(tasks, 60, "2026-08-19");
-    // With 60 capacity and 3 tasks of 30, they should ideally be split
-    // or at least not all crammed into day 1 if the balance logic works.
     const daysWithTasks = week.filter(d => d.entries.length > 0);
     expect(daysWithTasks.length).toBeGreaterThan(1);
   });
@@ -91,6 +88,13 @@ describe("planning engine", () => {
     const qwEntry = plan.find(e => e.item.id === "qw");
     expect(qwEntry?.reasons.some(r => r.includes("quick win"))).toBe(true);
     expect(plan[0].item.id).toBe("qw");
+  });
+  it("boosts priority when slack is zero or negative for high-impact tasks", () => {
+    const highImpact = item({ id: "hi", impact: 5, dueDate: "2026-08-21", effort: 480 }); // 1 day slack
+    const lowImpact = item({ id: "li", impact: 2, dueDate: "2026-08-21", effort: 480 });
+    const plan = buildPlan([highImpact, lowImpact], "2026-08-19");
+    const hiEntry = plan.find(e => e.item.id === "hi");
+    expect(hiEntry?.reasons.some(r => r.includes("critical path urgency"))).toBe(true);
   });
 });
 

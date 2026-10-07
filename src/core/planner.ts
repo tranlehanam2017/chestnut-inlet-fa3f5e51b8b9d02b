@@ -310,13 +310,23 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     if (!item) return 0;
     const due = daysBetween(today, item.dueDate);
     
-    let chainEffort = item.effort;
-    item.dependsOn?.forEach(depId => {
-      const dep = itemMap.get(depId);
-      if (dep && dep.status !== "done") {
-        chainEffort += dep.effort;
-      }
-    });
+    const getChainEffort = (currentId: string, visited = new Set<string>()): number => {
+      if (visited.has(currentId)) return 0;
+      visited.add(currentId);
+      const current = itemMap.get(currentId);
+      if (!current) return 0;
+      
+      let maxDepEffort = 0;
+      current.dependsOn?.forEach(depId => {
+        const dep = itemMap.get(depId);
+        if (dep && dep.status !== "done") {
+          maxDepEffort = Math.max(maxDepEffort, getChainEffort(depId, visited));
+        }
+      });
+      return current.effort + maxDepEffort;
+    };
+
+    const chainEffort = getChainEffort(id);
     
     const bufferFactor = chainEffort > 240 ? 1.2 : 1.0;
     const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
