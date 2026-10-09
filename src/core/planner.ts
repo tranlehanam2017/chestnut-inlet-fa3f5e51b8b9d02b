@@ -338,7 +338,8 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       daysBetween(today, i.dueDate) >= 0 && 
       daysBetween(today, i.dueDate) <= (due + windowSize)
     ).length;
-    const densityPenalty = overlappingTasks > 5 ? Math.ceil(overlappingTasks / 5) : 0;
+    
+    const densityPenalty = overlappingTasks > 5 ? Math.ceil(overlappingTasks / 4) : 0;
     
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
