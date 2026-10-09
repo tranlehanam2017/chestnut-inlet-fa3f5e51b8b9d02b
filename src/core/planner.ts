@@ -84,7 +84,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (daysUntilDue < 0) {
     const overdueDays = Math.abs(daysUntilDue);
-    const overdueBonus = 55 + Math.min(overdueDays, 7) * (item.impact * 2) + (overdueDays > 7 ? (overdueDays - 7) * 2 : 0);
+    const impactMultiplier = item.impact >= 4 ? 3 : 1;
+    const overdueBonus = (55 + Math.min(overdueDays, 7) * (item.impact * 2)) * impactMultiplier + (overdueDays > 7 ? (overdueDays - 7) * 2 : 0);
     score += overdueBonus;
     reasons.push(`${overdueDays} day(s) overdue`);
   } else if (daysUntilDue === 0) {
@@ -332,8 +333,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
 
     const chainEffort = getChainEffort(id);
     
-    const bufferFactor = chainEffort > 480 ? 1.3 : (chainEffort > 240 ? 1.2 : 1.0);
-    const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
+    const effortDays = Math.ceil(chainEffort / 480);
     let slack = due - effortDays;
 
     const windowSize = 7;
