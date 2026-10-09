@@ -225,7 +225,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
 
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical, slack };
+  let criticality: PlanEntry["criticality"] = "low";
+  if (isCritical || slack < 0) criticality = "high";
+  else if (slack <= 2 || inheritedUrgency > 10) criticality = "medium";
+
+  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical, slack, criticality };
 }
 
 function itemsToMap(items: any): Map<string, LifeRecord> {
