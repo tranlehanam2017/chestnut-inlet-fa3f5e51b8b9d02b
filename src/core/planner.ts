@@ -328,7 +328,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
 
     const chainEffort = getChainEffort(id);
     
-    const bufferFactor = chainEffort > 240 ? 1.2 : 1.0;
+    const bufferFactor = chainEffort > 480 ? 1.3 : (chainEffort > 240 ? 1.2 : 1.0);
     const effortDays = Math.ceil((chainEffort * bufferFactor) / 480);
     let slack = due - effortDays;
 
@@ -362,9 +362,12 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       urgencyInheritance.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
-    .sort((a, b) => b.score - a.score || (b.item.impact / b.item.effort) - (a.item.impact / a.item.effort) || a.item.dueDate.localeCompare(b.item.dueDate));
+    .sort((a, b) => 
+      b.score - a.score || 
+      (b.item.impact / Math.max(1, b.item.effort)) - (a.item.impact / Math.max(1, a.item.effort)) || 
+      a.item.dueDate.localeCompare(b.item.dueDate)
+    );
 
-  // Integrate estimated completion dates into the buildPlan using a default capacity of 480m
   const dailyLoad = suggestDailyLoad(items, 480, today);
   const completionDates = new Map<string, string>();
   for (const day of dailyLoad) {
@@ -467,7 +470,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     const limit = strictCapacity ? capacity : capacity * 1.2;
     
-    // Optimization: If this task was already started today, prioritize finishing it today
     const todayDay = days.find(d => d.date === today);
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
     
