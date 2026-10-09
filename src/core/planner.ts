@@ -347,7 +347,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     return adjustedSlack;
   };
 
-  return items
+  const entries = items
     .map((item) => priorityFor(
       item, 
       today, 
@@ -363,6 +363,20 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     ))
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => b.score - a.score || (b.item.impact / b.item.effort) - (a.item.impact / a.item.effort) || a.item.dueDate.localeCompare(b.item.dueDate));
+
+  // Integrate estimated completion dates into the buildPlan using a default capacity of 480m
+  const dailyLoad = suggestDailyLoad(items, 480, today);
+  const completionDates = new Map<string, string>();
+  for (const day of dailyLoad) {
+    for (const entry of day.entries) {
+      completionDates.set(entry.item.id, day.date);
+    }
+  }
+
+  return entries.map(entry => ({
+    ...entry,
+    estimatedCompletionDate: completionDates.get(entry.item.id)
+  }));
 }
 
 export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
@@ -431,7 +445,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     entries: [] as PlanEntry[],
   }));
   
-  const plan = buildPlan(items, today);
+  const plan = buildPlan(items, today).filter(e => e.estimatedCompletionDate === undefined);
   const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
 
@@ -452,6 +466,11 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     }
 
     const limit = strictCapacity ? capacity : capacity * 1.2;
+    
+    // Optimization: If this task was already started today, prioritize finishing it today
+    const todayDay = days.find(d => d.date === today);
+    const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
+    
     const candidates = days.filter((day) => {
       return day.date >= today && (day.used < limit);
     });
@@ -459,7 +478,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     if (candidates.length === 0) return false;
 
     let target;
-    if (preferEarliest) {
+    if (alreadyStartedToday && todayDay && todayDay.used < limit) {
+      target = todayDay;
+    } else if (preferEarliest) {
       target = candidates[0];
     } else {
       target = candidates.reduce((prev, curr) => {
