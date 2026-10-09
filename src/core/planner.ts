@@ -121,13 +121,18 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const effortPenalty = Math.min(item.effort / 20, 12);
   score -= effortPenalty;
 
-  if (item.status === "active") {
-    score += 8;
-    reasons.push("already in progress");
-  }
-
   const updatedDate = item.updatedAt.slice(0, 10);
   const daysSinceUpdate = daysBetween(updatedDate, today);
+
+  if (item.status === "active") {
+    const activeBonus = 8;
+    const stalenessDecay = Math.min(daysSinceUpdate * 0.5, activeBonus);
+    const netBonus = activeBonus - stalenessDecay;
+    score += netBonus;
+    if (netBonus > 0) reasons.push("already in progress");
+    else if (daysSinceUpdate > 3) reasons.push("stalled active task");
+  }
+
   if (daysSinceUpdate > 30) {
     const stalePenalty = Math.min((daysSinceUpdate - 30) * 0.2, 10);
     score -= stalePenalty;
@@ -369,8 +374,9 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) => 
       b.score - a.score || 
-      (b.item.impact / Math.max(1, b.item.effort)) - (a.item.impact / Math.max(1, a.item.effort)) || 
-      a.item.dueDate.localeCompare(b.item.dueDate)
+      b.item.impact - a.item.impact ||
+      a.item.dueDate.localeCompare(b.item.dueDate) ||
+      (b.item.impact / Math.max(1, b.item.effort)) - (a.item.impact / Math.max(1, a.item.effort))
     );
 
   const dailyLoad = suggestDailyLoad(items, 480, today);
