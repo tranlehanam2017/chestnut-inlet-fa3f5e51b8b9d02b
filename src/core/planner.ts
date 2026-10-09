@@ -525,11 +525,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     }
   }
 
-  // Map predicted completion date back to plan entries
   const completionDates = new Map<string, string>();
   for (const day of days) {
     for (const entry of day.entries) {
-      // The item is completed on the last day it was allocated effort
       completionDates.set(entry.item.id, day.date);
     }
   }
@@ -538,14 +536,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     ...day,
     overloaded: day.used > capacity,
     overage: Math.max(0, day.used - capacity),
+    completionDates,
   }));
-
-  // Note: In a real application, we'd return the plan entries updated with their completion dates
-  // For the purpose of this function, we can't modify the original 'plan' array elements in a way
-  // that reflects here unless we return them. Since suggestDailyLoad is used for the week view,
-  // and buildPlan is used for the list, this suggests we should probably move this logic
-  // or allow this function to return the updated plan too. For now, we ensure the entries
-  // in resultDays carry the completion date info indirectly through the day.date they are in.
 
   return resultDays;
 }
