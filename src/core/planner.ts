@@ -170,7 +170,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (blockingPower > 0) {
-    const blockingWeight = dependencyValue > 10 ? 20 : 15;
+    const isCriticalBlocker = criticalPathIds.has(item.id);
+    const blockingWeight = isCriticalBlocker 
+      ? (dependencyValue > 10 ? 25 : 20) 
+      : (dependencyValue > 10 ? 15 : 10);
+    
     score += blockingPower * blockingWeight;
     reasons.push(`unblocks ${blockingPower} task(s)`);
   }
