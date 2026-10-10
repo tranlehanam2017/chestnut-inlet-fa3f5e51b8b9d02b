@@ -483,7 +483,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       }
     }
 
-    const limit = strictCapacity ? capacity : capacity * 1.2;
+    const limit = strictCapacity ? capacity : capacity * 1.3;
     
     const todayDay = days.find(d => d.date === today);
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
@@ -543,7 +543,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     });
 
     urgent.sort((a, b) => b.score - a.score).forEach(e => {
-      const strict = e.item.impact < 4 && e.slack > 1;
+      const strict = e.item.impact < 4 && e.slack > 2;
       if (allocate(e, strict, true)) changed = true;
     });
 
@@ -553,7 +553,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
     }).forEach(e => {
       const preferEarliest = e.daysUntilDue <= 3 || e.item.impact >= 4;
-      if (allocate(e, false, preferEarliest)) changed = true;
+      if (allocate(e, true, preferEarliest)) changed = true;
     });
 
     for (let i = remaining.length - 1; i >= 0; i--) {
