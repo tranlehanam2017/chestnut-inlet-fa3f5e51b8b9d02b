@@ -139,6 +139,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     if (daysSinceUpdate > 60) reasons.push("stale record");
   }
 
+  if (daysSinceUpdate >= 1 && daysSinceUpdate <= 7 && slack > 2 && slack < 14) {
+    score += 5;
+    reasons.push("stable priority");
+  }
+
   if (item.status === "done") score = -1;
 
   const blockers = item.dependsOn?.filter(depId => {
