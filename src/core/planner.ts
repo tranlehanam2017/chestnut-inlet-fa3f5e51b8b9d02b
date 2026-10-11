@@ -356,7 +356,11 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
-    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty;
+    
+    const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks || 1);
+    const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks / 6) : 0;
+
+    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus;
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
@@ -456,7 +460,12 @@ export function summarize(items: readonly LifeRecord[], today = localDay()): Pla
 }
 
 export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: number, today = localDay()) {
-  const capacity = Math.max(1, minutesPerDay);
+  const baseCapacity = Math.max(1, minutesPerDay);
+  const totalEffort = items.filter(i => i.status !== "done").reduce((sum, i) => sum + i.effort, 0);
+  const workloadDensity = totalEffort / (baseCapacity * 7);
+  const dynamicBuffer = workloadDensity > 1.2 ? 0.9 : 1.0;
+  const capacity = baseCapacity * dynamicBuffer;
+
   const days = Array.from({ length: 7 }, (_, offset) => ({
     date: new Date(Date.parse(`${today}T00:00:00Z`) + offset * DAY_MS).toISOString().slice(0, 10),
     used: 0,
@@ -572,8 +581,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
   const resultDays = days.map((day) => ({
     ...day,
-    overloaded: day.used > capacity,
-    overage: Math.max(0, day.used - capacity),
+    overloaded: day.used > baseCapacity,
+    overage: Math.max(0, day.used - baseCapacity),
     completionDates,
   }));
 
