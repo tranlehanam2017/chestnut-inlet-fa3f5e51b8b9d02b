@@ -558,7 +558,12 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       if (allocate(e, false, true)) changed = true;
     });
 
-    urgent.sort((a, b) => b.score - a.score).forEach(e => {
+    urgent.sort((a, b) => {
+      const aHighRisk = a.item.effort > 180 && a.slack < 2;
+      const bHighRisk = b.item.effort > 180 && b.slack < 2;
+      if (aHighRisk !== bHighRisk) return aHighRisk ? -1 : 1;
+      return b.score - a.score;
+    }).forEach(e => {
       const strict = e.item.impact < 4 && e.slack > 2;
       if (allocate(e, strict, true)) changed = true;
     });
