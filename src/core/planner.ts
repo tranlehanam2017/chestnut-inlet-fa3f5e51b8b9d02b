@@ -287,9 +287,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       if (item.status === "done") continue;
       if (item.dependsOn?.includes(id)) {
         const childStats = computeTransitiveValues(item.id, visited);
-        totalValue += item.impact + childStats.value;
+        totalValue += item.impact + (childStats.value * 0.8);
         totalEffort += item.effort + childStats.effort;
-        maxUrgency = Math.max(maxUrgency, (daysBetween(today, item.dueDate) <= 2 ? 15 : 0) + childStats.urgency);
+        const itemUrgency = (daysBetween(today, item.dueDate) <= 2 ? 15 : (daysBetween(today, item.dueDate) <= 5 ? 5 : 0));
+        maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
       }
     }
 
@@ -346,7 +347,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     };
 
     const chainEffort = getChainEffort(id);
-    
     const effortDays = Math.ceil(chainEffort / 480);
     let slack = due - effortDays;
 
@@ -361,13 +361,10 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length 
       : 0;
     const densityPenalty = overlappingTasks.length > 4 ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) : 0;
-    
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
-    
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
     const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks.length / 6) : 0;
-
     const depthPenalty = getDepth(id) * 0.5;
 
     const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus - depthPenalty;
