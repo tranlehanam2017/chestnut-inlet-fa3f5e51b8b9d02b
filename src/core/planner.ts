@@ -350,17 +350,22 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       i.status !== "done" && 
       daysBetween(today, i.dueDate) >= 0 && 
       daysBetween(today, i.dueDate) <= (due + windowSize)
-    ).length;
+    );
     
-    const densityPenalty = overlappingTasks > 5 ? Math.ceil(overlappingTasks / 4) : 0;
+    const avgImpact = overlappingTasks.length > 0 
+      ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length 
+      : 0;
+    const densityPenalty = overlappingTasks.length > 4 ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) : 0;
     
     const complexityPenalty = item.effort > 120 ? 1 : 0;
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     
-    const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks || 1);
-    const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks / 6) : 0;
+    const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
+    const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks.length / 6) : 0;
 
-    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus;
+    const depthPenalty = getDepth(id) * 0.5;
+
+    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus - depthPenalty;
     slackCache.set(id, adjustedSlack);
     return adjustedSlack;
   };
