@@ -236,7 +236,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`urgent descendant pressure`);
   }
 
-  if (slack > 0 && slack <= 3 && item.effort > 180 && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+  const riskThreshold = item.impact >= 4 ? 5 : 3;
+  if (slack > 0 && slack <= riskThreshold && item.effort > 180 && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
     score += 15;
     reasons.push("approaching risk zone");
   }
@@ -473,10 +474,18 @@ export function summarize(items: readonly LifeRecord[], today = localDay()): Pla
 
 export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: number, today = localDay()) {
   const baseCapacity = Math.max(1, minutesPerDay);
-  const totalEffort = items.filter(i => i.status !== "done").reduce((sum, i) => sum + i.effort, 0);
+  const activeItems = items.filter(i => i.status !== "done");
+  const totalEffort = activeItems.reduce((sum, i) => sum + i.effort, 0);
+  
+  const highImpactCount = activeItems.filter(i => i.impact >= 4).length;
+  const impactRatio = activeItems.length > 0 ? highImpactCount / activeItems.length : 0;
+  
   const workloadDensity = totalEffort / (baseCapacity * 7);
   const dynamicBuffer = workloadDensity > 1.2 ? 0.9 : 1.0;
-  const capacity = baseCapacity * dynamicBuffer;
+  
+  // Scale capacity up if the remaining work is predominantly high-impact
+  const impactScale = 1 + (impactRatio * 0.15);
+  const capacity = baseCapacity * dynamicBuffer * impactScale;
 
   const days = Array.from({ length: 7 }, (_, offset) => ({
     date: new Date(Date.parse(`${today}T00:00:00Z`) + offset * DAY_MS).toISOString().slice(0, 10),
