@@ -236,8 +236,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`urgent descendant pressure`);
   }
 
-  const riskThreshold = item.impact >= 4 ? 5 : 3;
-  if (slack > 0 && slack <= riskThreshold && item.effort > 180 && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+  const riskThreshold = item.impact >= 4 ? 6 : 4;
+  const effortRatio = item.effort / (Math.max(1, slack) * 60);
+  if (slack > 0 && slack <= riskThreshold && (item.effort > 180 || effortRatio > 0.5) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
     score += 15;
     reasons.push("approaching risk zone");
   }
@@ -295,7 +296,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         const childStats = computeTransitiveValues(item.id, visited);
         totalValue += item.impact + (childStats.value * 0.8);
         totalEffort += item.effort + childStats.effort;
-        const itemUrgency = (daysBetween(today, item.dueDate) <= 2 ? 15 : (daysBetween(today, item.dueDate) <= 5 ? 5 : 0));
+        const itemUrgency = (daysBetween(today, item.dueDate) <= 2 ? 25 : (daysBetween(today, item.dueDate) <= 5 ? 10 : 0)) * (item.impact >= 4 ? 1.5 : 1);
         maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
       }
     }
