@@ -236,6 +236,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`urgent descendant pressure`);
   }
 
+  if (slack > 0 && slack <= 3 && item.effort > 180 && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+    score += 15;
+    reasons.push("approaching risk zone");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
@@ -361,7 +366,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
       ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length 
       : 0;
     const densityPenalty = overlappingTasks.length > 4 ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) : 0;
-    const complexityPenalty = item.effort > 120 ? 1 : 0;
+    const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
     const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks.length / 6) : 0;
