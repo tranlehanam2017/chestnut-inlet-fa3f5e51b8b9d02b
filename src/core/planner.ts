@@ -375,7 +375,11 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const avgImpact = overlappingTasks.length > 0 
       ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length 
       : 0;
-    const densityPenalty = overlappingTasks.length > 4 ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) : 0;
+    
+    const densityPenalty = overlappingTasks.length > 4 
+      ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) 
+      : (overlappingTasks.length > 2 ? 1 : 0);
+      
     const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
