@@ -77,6 +77,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   } else if (item.category === "Transport") {
     score += 5;
     reasons.push("logistics priority");
+  } else if (item.category === "Lodging") {
+    score += 8;
+    reasons.push("accommodation focus");
   }
 
   const effortLeadDays = Math.ceil(item.effort / 180);
@@ -239,10 +242,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push(`urgent descendant pressure`);
   }
 
-  const riskThreshold = item.impact >= 4 ? 6 : 4;
+  const riskThreshold = item.impact >= 4 ? 7 : 5;
   const effortRatio = item.effort / (Math.max(1, slack) * 60);
-  if (slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.5)) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
-    score += 15;
+  if (slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6)) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+    score += 20;
     reasons.push("approaching risk zone");
   }
 
