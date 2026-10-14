@@ -484,7 +484,6 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   const workloadDensity = totalEffort / (baseCapacity * 7);
   const dynamicBuffer = workloadDensity > 1.2 ? 0.9 : 1.0;
   
-  // Scale capacity up if the remaining work is predominantly high-impact
   const impactScale = 1 + (impactRatio * 0.15);
   const capacity = baseCapacity * dynamicBuffer * impactScale;
 
