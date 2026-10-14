@@ -68,18 +68,18 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
   let score = impactWeight;
   
-  if (item.category === "Health") {
-    score += 10;
-    reasons.push("wellness priority");
-  } else if (item.category === "Documents") {
-    score += 15;
-    reasons.push("administrative critical");
-  } else if (item.category === "Transport") {
-    score += 5;
-    reasons.push("logistics priority");
-  } else if (item.category === "Lodging") {
-    score += 8;
-    reasons.push("accommodation focus");
+  const categoryWeights: Record<string, { weight: number; reason: string }> = {
+    "Health": { weight: 10, reason: "wellness priority" },
+    "Documents": { weight: 18, reason: "administrative critical" },
+    "Transport": { weight: 7, reason: "logistics priority" },
+    "Lodging": { weight: 10, reason: "accommodation focus" },
+    "Packing": { weight: 5, reason: "preparation focus" },
+  };
+
+  const catFocus = categoryWeights[item.category];
+  if (catFocus) {
+    score += catFocus.weight;
+    reasons.push(catFocus.reason);
   }
 
   const effortLeadDays = Math.ceil(item.effort / 180);
@@ -244,14 +244,16 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const riskThreshold = item.impact >= 4 ? 7 : 5;
   const effortRatio = item.effort / (Math.max(1, slack) * 60);
-  if (slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6)) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+  const isAlreadyCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
+  
+  if (!isAlreadyCritical && slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6))) {
     score += 20;
     reasons.push("approaching risk zone");
   }
 
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
-  const isCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
+  const isCritical = isAlreadyCritical;
 
   let criticality: PlanEntry["criticality"] = "low";
   if (isCritical || slack < 0) criticality = "high";
