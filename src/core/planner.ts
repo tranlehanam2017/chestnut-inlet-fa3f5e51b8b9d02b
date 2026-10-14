@@ -535,7 +535,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
     
     const candidates = days.filter((day) => {
-      return day.date >= today && (day.used < limit);
+      const focusLimit = 5;
+      return day.date >= today && day.used < limit && day.entries.length < focusLimit;
     });
 
     if (candidates.length === 0) return false;
