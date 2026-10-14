@@ -132,15 +132,19 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (item.status === "active") {
     const activeBonus = 8;
+    if (daysSinceUpdate <= 1) {
+      score += 5;
+      reasons.push("hot momentum");
+    }
     const stalenessDecay = Math.min(daysSinceUpdate * 0.5, activeBonus);
     const netBonus = activeBonus - stalenessDecay;
     score += netBonus;
-    if (netBonus > 0) reasons.push("already in progress");
+    if (netBonus > 0 && daysSinceUpdate > 1) reasons.push("already in progress");
     else if (daysSinceUpdate > 3) reasons.push("stalled active task");
   }
 
   if (daysSinceUpdate > 30) {
-    const stalePenalty = Math.min((daysSinceUpdate - 30) * 0.2, 10);
+    const stalePenalty = Math.min((daysSinceUpdate - 30) * 0.15, 10);
     score -= stalePenalty;
     if (daysSinceUpdate > 60) reasons.push("stale record");
   }
