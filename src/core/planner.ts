@@ -116,6 +116,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   } else if (efficiency > 4 && item.impact >= 3) {
     score *= 1.15;
     reasons.push("high efficiency (quick win)");
+  } else if (item.impact >= 3 && item.effort > 60 && item.effort <= 180) {
+    score += 5;
+    reasons.push("steady progress task");
   }
 
   const effortPenalty = Math.min(item.effort / 20, 12);
@@ -238,7 +241,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const riskThreshold = item.impact >= 4 ? 6 : 4;
   const effortRatio = item.effort / (Math.max(1, slack) * 60);
-  if (slack > 0 && slack <= riskThreshold && (item.effort > 180 || effortRatio > 0.5) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
+  if (slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.5)) && !((daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4))) {
     score += 15;
     reasons.push("approaching risk zone");
   }
