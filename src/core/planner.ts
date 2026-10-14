@@ -114,7 +114,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
   const isQuickWin = efficiency > 4 && item.impact >= 3 && item.effort <= 60;
   if (isQuickWin) {
-    score *= 1.2;
+    score *= 1.25;
     reasons.push("🚀 quick win (high value, low effort)");
   } else if (efficiency > 4 && item.impact >= 3) {
     score *= 1.15;
@@ -124,7 +124,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("steady progress task");
   }
 
-  const effortPenalty = Math.min(item.effort / 20, 12);
+  const effortPenalty = Math.min(item.effort / 30, 8);
   score -= effortPenalty;
 
   const updatedDate = item.updatedAt.slice(0, 10);
