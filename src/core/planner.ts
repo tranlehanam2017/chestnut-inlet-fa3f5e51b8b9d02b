@@ -87,8 +87,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (daysUntilDue < 0) {
     const overdueDays = Math.abs(daysUntilDue);
-    const impactMultiplier = item.impact >= 4 ? 3 : 1;
-    const overdueBonus = (55 + Math.min(overdueDays, 7) * (item.impact * 2)) * impactMultiplier + (overdueDays > 7 ? (overdueDays - 7) * 2 : 0);
+    const impactMultiplier = 1 + (item.impact - 1) * 0.4;
+    const overdueBonus = (50 + Math.min(overdueDays, 7) * (item.impact * 3)) * impactMultiplier + (overdueDays > 7 ? (overdueDays - 7) * 3 : 0);
     score += overdueBonus;
     reasons.push(`${overdueDays} day(s) overdue`);
   } else if (daysUntilDue === 0) {
