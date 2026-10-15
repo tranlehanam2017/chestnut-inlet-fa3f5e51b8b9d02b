@@ -317,7 +317,9 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         const childStats = computeTransitiveValues(item.id, visited);
         totalValue += item.impact + (childStats.value * 0.8);
         totalEffort += item.effort + childStats.effort;
-        const itemUrgency = (daysBetween(today, item.dueDate) <= 2 ? 25 : (daysBetween(today, item.dueDate) <= 5 ? 10 : 0)) * (item.impact >= 4 ? 1.5 : 1);
+        
+        const childDue = daysBetween(today, item.dueDate);
+        const itemUrgency = (childDue <= 0 ? 40 : (childDue <= 2 ? 25 : (childDue <= 5 ? 10 : 0))) * (item.impact >= 4 ? 1.5 : 1);
         maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
       }
     }
