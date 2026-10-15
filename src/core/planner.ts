@@ -260,8 +260,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const isCritical = isAlreadyCritical;
 
   let criticality: PlanEntry["criticality"] = "low";
-  if (isCritical || slack < 0) criticality = "high";
-  else if (slack <= 2 || inheritedUrgency > 10) criticality = "medium";
+  if (isCritical || slack < 0) {
+    criticality = "high";
+  } else if (slack <= 1 || (slack <= 3 && item.impact >= 4) || inheritedUrgency > 15) {
+    criticality = "medium";
+  }
 
   return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical, slack, criticality };
 }
