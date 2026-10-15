@@ -255,6 +255,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     reasons.push("approaching risk zone");
   }
 
+  if (!isAlreadyCritical && slack > 0 && slack <= 3 && item.effort > 240) {
+    const fragilityBonus = (3 - slack) * 12;
+    score += fragilityBonus;
+    reasons.push("high-effort fragility");
+  }
+
   if (reasons.length === 0) reasons.push("ranked by impact and effort");
 
   const isCritical = isAlreadyCritical;
