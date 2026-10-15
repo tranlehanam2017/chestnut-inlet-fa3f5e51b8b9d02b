@@ -107,8 +107,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (effortLeadDays > 0 && daysUntilDue > 0) {
     const leadBonus = effortLeadDays * 5;
-    score += leadBonus;
-    reasons.push(`substantial effort (${effortLeadDays}d lead)`);
+    const leadUrgency = daysUntilDue <= effortLeadDays ? (effortLeadDays - daysUntilDue + 1) * 10 : 0;
+    score += leadBonus + leadUrgency;
+    if (leadUrgency > 0) reasons.push("within effort lead-time");
+    else reasons.push(`substantial effort (${effortLeadDays}d lead)`);
   }
 
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
