@@ -250,9 +250,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (inheritedUrgency > 0) {
-    const urgencyBoost = Math.min(inheritedUrgency, 50);
+    const urgencyBoost = Math.min(inheritedUrgency, 60);
     score += urgencyBoost;
-    reasons.push(`urgent descendant pressure`);
+    if (inheritedUrgency > 30) reasons.push(`critical descendant pressure`);
+    else if (inheritedUrgency > 0) reasons.push(`urgent descendant pressure`);
   }
 
   const riskThreshold = item.impact >= 4 ? 7 : 5;
@@ -265,7 +266,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (!isAlreadyCritical && slack > 0 && slack <= 3 && item.effort > 240) {
-    const fragilityBonus = (3 - slack) * 12;
+    const fragilityBonus = (3 - slack) * 15;
     score += fragilityBonus;
     reasons.push("high-effort fragility");
   }
@@ -277,7 +278,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   let criticality: PlanEntry["criticality"] = "low";
   if (isCritical || slack < 0) {
     criticality = "high";
-  } else if (slack <= 1 || (slack <= 3 && item.impact >= 4) || inheritedUrgency > 15) {
+  } else if (slack <= 1 || (slack <= 3 && item.impact >= 4) || inheritedUrgency > 20) {
     criticality = "medium";
   }
 
@@ -328,7 +329,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         totalEffort += item.effort + childStats.effort;
         
         const childDue = daysBetween(today, item.dueDate);
-        const itemUrgency = (childDue <= 0 ? 40 : (childDue <= 2 ? 25 : (childDue <= 5 ? 10 : 0))) * (item.impact >= 4 ? 1.5 : 1);
+        const itemUrgency = (childDue <= 0 ? 45 : (childDue <= 2 ? 30 : (childDue <= 5 ? 15 : 0))) * (item.impact >= 4 ? 1.6 : 1);
         maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
       }
     }
