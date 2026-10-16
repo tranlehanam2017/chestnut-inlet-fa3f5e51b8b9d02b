@@ -244,7 +244,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (inheritedUrgency > 0) {
-    score += inheritedUrgency;
+    const urgencyBoost = Math.min(inheritedUrgency, 50);
+    score += urgencyBoost;
     reasons.push(`urgent descendant pressure`);
   }
 
