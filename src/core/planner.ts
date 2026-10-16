@@ -78,7 +78,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const catFocus = categoryWeights[item.category];
   if (catFocus) {
-    score += catFocus.weight;
+    const weightedCatBonus = catFocus.weight * (1 + (item.impact - 1) * 0.2);
+    score += weightedCatBonus;
     reasons.push(catFocus.reason);
   }
 
@@ -143,6 +144,11 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
     score += netBonus;
     if (netBonus > 0 && daysSinceUpdate > 1) reasons.push("already in progress");
     else if (daysSinceUpdate > 3) reasons.push("stalled active task");
+
+    if (daysSinceUpdate > 1 && daysSinceUpdate <= 7 && item.effort > 120) {
+      score += 10;
+      reasons.push("active heavy-lift stability");
+    }
   }
 
   if (daysSinceUpdate > 30) {
