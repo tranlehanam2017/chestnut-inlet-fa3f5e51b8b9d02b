@@ -122,6 +122,9 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   } else if (efficiency > 4 && item.impact >= 3) {
     score *= 1.10;
     reasons.push("high efficiency (quick win)");
+  } else if (efficiency > 2 && item.impact >= 4 && item.effort > 60) {
+    score += 12;
+    reasons.push("high density value");
   } else if (item.impact >= 3 && item.effort > 60 && item.effort <= 180) {
     score += 5;
     reasons.push("steady progress task");
@@ -566,6 +569,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const urgencyMultiplier = entry.daysUntilDue <= 1 || entry.isCritical ? 2 : 1;
       if (isHeavyLift && heavyLiftCount >= urgencyMultiplier) return false;
 
+      // High-impact distribution: prevent clustering of high-impact tasks if we have room elsewhere
+      const highImpactCount = day.entries.filter(e => e.item.impact >= 4).length;
+      if (entry.item.impact >= 4 && highImpactCount >= 2 && day.used < limit * 0.6) return false;
+
       return day.date >= today && day.used < limit && day.entries.length < focusLimit;
     });
 
@@ -638,12 +645,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       if (allocate(e, true, preferEarliest)) changed = true;
     });
 
-    // Critical Overflow: If some critical tasks are still unallocated due to capacity/focus,
-    // try to force-allocate small pieces of them into any remaining gaps across the week
     if (!changed) {
       const stalledCritical = remaining.filter(e => e.isCritical);
       for (const e of stalledCritical) {
-        // Force attempt without strict capacity or focus limits as a last resort for critical items
         const effortNeeded = remainingEffort.get(e.item.id) ?? 0;
         if (effortNeeded <= 0) continue;
         
