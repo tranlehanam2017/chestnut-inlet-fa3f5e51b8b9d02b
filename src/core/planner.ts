@@ -550,7 +550,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       }
     }
 
-    const limit = strictCapacity ? capacity : capacity * 1.3;
+    // Sprint mode: Critical tasks can push capacity by 50% if workload is extreme
+    const sprintBoost = (entry.isCritical && workloadDensity > 1.5) ? 1.5 : 1.0;
+    const limit = strictCapacity ? capacity * sprintBoost : capacity * 1.3 * sprintBoost;
     
     const todayDay = days.find(d => d.date === today);
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
