@@ -562,7 +562,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
       const isHeavyLift = entry.item.effort > 240;
       
-      if (isHeavyLift && heavyLiftCount >= 1) return false;
+      // Flexible heavy-lift constraint: allow if task is overdue or high-priority and no other options exist
+      const urgencyMultiplier = entry.daysUntilDue <= 1 || entry.isCritical ? 2 : 1;
+      if (isHeavyLift && heavyLiftCount >= urgencyMultiplier) return false;
+
       return day.date >= today && day.used < limit && day.entries.length < focusLimit;
     });
 
@@ -634,6 +637,30 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const preferEarliest = e.daysUntilDue <= 3 || e.item.impact >= 4;
       if (allocate(e, true, preferEarliest)) changed = true;
     });
+
+    // Critical Overflow: If some critical tasks are still unallocated due to capacity/focus,
+    // try to force-allocate small pieces of them into any remaining gaps across the week
+    if (!changed) {
+      const stalledCritical = remaining.filter(e => e.isCritical);
+      for (const e of stalledCritical) {
+        // Force attempt without strict capacity or focus limits as a last resort for critical items
+        const effortNeeded = remainingEffort.get(e.item.id) ?? 0;
+        if (effortNeeded <= 0) continue;
+        
+        const gap = days.find(d => d.used < baseCapacity * 1.5);
+        if (gap) {
+          const available = (baseCapacity * 1.5) - gap.used;
+          const taken = Math.min(effortNeeded, available);
+          if (taken > 0) {
+            if (!gap.entries.includes(e)) gap.entries.push(e);
+            gap.used += taken;
+            remainingEffort.set(e.item.id, effortNeeded - taken);
+            if (remainingEffort.get(e.item.id) === 0) allocatedIds.add(e.item.id);
+            changed = true;
+          }
+        }
+      }
+    }
 
     for (let i = remaining.length - 1; i >= 0; i--) {
       if (allocatedIds.has(remaining[i].item.id)) {
