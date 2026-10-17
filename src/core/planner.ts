@@ -558,6 +558,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     
     const candidates = days.filter((day) => {
       const focusLimit = 5;
+      const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
+      const isHeavyLift = entry.item.effort > 240;
+      
+      if (isHeavyLift && heavyLiftCount >= 1) return false;
       return day.date >= today && day.used < limit && day.entries.length < focusLimit;
     });
 
