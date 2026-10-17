@@ -115,12 +115,12 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   const efficiency = item.impact / (Math.max(1, item.effort) / 60);
-  const isQuickWin = efficiency > 4 && item.impact >= 3 && item.effort <= 60;
+  const isQuickWin = efficiency > 4 && item.impact >= 4 && item.effort <= 60;
   if (isQuickWin) {
     score *= 1.25;
     reasons.push("🚀 quick win (high value, low effort)");
   } else if (efficiency > 4 && item.impact >= 3) {
-    score *= 1.15;
+    score *= 1.10;
     reasons.push("high efficiency (quick win)");
   } else if (item.impact >= 3 && item.effort > 60 && item.effort <= 180) {
     score += 5;
@@ -220,7 +220,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   }
 
   if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
-    score -= 10;
+    const slackDecay = Math.min(slack * 0.2, 15);
+    score -= (10 + slackDecay);
     reasons.push("has high slack");
   } else if (daysUntilDue <= 3 && blockingPower > 0) {
     score += 5;
