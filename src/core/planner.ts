@@ -266,7 +266,8 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const isAlreadyCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
 
   if (!isAlreadyCritical && slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6))) {
-    score += 20;
+    const proximityMultiplier = 1 + (riskThreshold - slack) * 0.05 * item.impact;
+    score *= proximityMultiplier;
     reasons.push("approaching risk zone");
   }
 
