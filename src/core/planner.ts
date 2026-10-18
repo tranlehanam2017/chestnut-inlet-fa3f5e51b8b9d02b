@@ -488,7 +488,7 @@ function findBottleneckId(items: readonly LifeRecord[], today: string): string |
         const criticalityMultiplier = entry.isCritical ? 5 : 1;
         const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
-        const chainWeight = getDepth(root.id) * 3;
+        const chainWeight = getDepth(root.id) * 5; // Increased from 3 to 5
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight);
       }
     }
