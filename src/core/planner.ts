@@ -61,7 +61,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0, categoryPressure = 1): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
 
@@ -78,9 +78,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   const catFocus = categoryWeights[item.category];
   if (catFocus) {
-    const weightedCatBonus = catFocus.weight * (1 + (item.impact - 1) * 0.2);
+    const weightedCatBonus = catFocus.weight * (1 + (item.impact - 1) * 0.2) * categoryPressure;
     score += weightedCatBonus;
     reasons.push(catFocus.reason);
+    if (categoryPressure > 1.2) reasons.push("category balancing priority");
   }
 
   const effortLeadDays = Math.ceil(item.effort / 180);
@@ -410,7 +411,6 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
     const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     
-    // Concurrency analysis: reward tasks that belong to independent chains
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
     const concurrencyBonus = dependencyDensity < 0.1 ? Math.ceil(overlappingTasks.length / 4) : Math.ceil(overlappingTasks.length / 8);
     
@@ -421,20 +421,36 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
     return adjustedSlack;
   };
 
+  const categoryEfforts = new Map<string, number>();
+  let totalRemainingEffort = 0;
+  for (const item of items) {
+    if (item.status !== "done") {
+      categoryEfforts.set(item.category, (categoryEfforts.get(item.category) ?? 0) + item.effort);
+      totalRemainingEffort += item.effort;
+    }
+  }
+
   const entries = items
-    .map((item) => priorityFor(
-      item,
-      today,
-      itemMap,
-      criticalPathIds,
-      blockingCounts.get(item.id) ?? 0,
-      getDepth(item.id),
-      calculateSlack(item.id),
-      downstreamEfforts.get(item.id) ?? 0,
-      dependencyValues.get(item.id) ?? 0,
-      item.id === primaryBottleneckId,
-      urgencyInheritance.get(item.id) ?? 0
-    ))
+    .map((item) => {
+      const catEffort = categoryEfforts.get(item.category) ?? 0;
+      const pressure = totalRemainingEffort > 0 ? (catEffort / totalRemainingEffort) * 2 : 1;
+      const balancedPressure = Math.max(0.8, Math.min(1.5, pressure));
+
+      return priorityFor(
+        item,
+        today,
+        itemMap,
+        criticalPathIds,
+        blockingCounts.get(item.id) ?? 0,
+        getDepth(item.id),
+        calculateSlack(item.id),
+        downstreamEfforts.get(item.id) ?? 0,
+        dependencyValues.get(item.id) ?? 0,
+        item.id === primaryBottleneckId,
+        urgencyInheritance.get(item.id) ?? 0,
+        balancedPressure
+      );
+    })
     .filter((entry) => entry.item.status !== "done")
     .sort((a, b) =>
       b.score - a.score ||
@@ -491,8 +507,9 @@ function findBottleneckId(items: readonly LifeRecord[], today: string): string |
         const criticalityMultiplier = entry.isCritical ? 5 : 1;
         const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
-        const chainWeight = getDepth(root.id) * 8; // Increased from 5 to 8 to prioritize root blockers of deep trees
-        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight);
+        const chainWeight = getDepth(root.id) * 8;
+        const urgencyWeight = entry.daysUntilDue <= 2 ? 20 : 0;
+        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight + urgencyWeight);
       }
     }
   }
