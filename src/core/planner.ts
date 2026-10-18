@@ -565,11 +565,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
       const isHeavyLift = entry.item.effort > 240;
       
-      // Flexible heavy-lift constraint: allow if task is overdue or high-priority and no other options exist
       const urgencyMultiplier = entry.daysUntilDue <= 1 || entry.isCritical ? 2 : 1;
       if (isHeavyLift && heavyLiftCount >= urgencyMultiplier) return false;
 
-      // High-impact distribution: prevent clustering of high-impact tasks if we have room elsewhere
       const highImpactCount = day.entries.filter(e => e.item.impact >= 4).length;
       if (entry.item.impact >= 4 && highImpactCount >= 2 && day.used < limit * 0.6) return false;
 
