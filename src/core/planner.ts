@@ -409,8 +409,11 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
 
     const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
+    
+    // Concurrency analysis: reward tasks that belong to independent chains
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
-    const concurrencyBonus = dependencyDensity < 0.2 ? Math.ceil(overlappingTasks.length / 6) : 0;
+    const concurrencyBonus = dependencyDensity < 0.1 ? Math.ceil(overlappingTasks.length / 4) : Math.ceil(overlappingTasks.length / 8);
+    
     const depthPenalty = getDepth(id) * 0.5;
 
     const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus - depthPenalty;
@@ -488,7 +491,7 @@ function findBottleneckId(items: readonly LifeRecord[], today: string): string |
         const criticalityMultiplier = entry.isCritical ? 5 : 1;
         const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
         const volumeWeight = entry.item.effort / 60;
-        const chainWeight = getDepth(root.id) * 5; // Increased from 3 to 5
+        const chainWeight = getDepth(root.id) * 8; // Increased from 5 to 8 to prioritize root blockers of deep trees
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight);
       }
     }
