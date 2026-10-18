@@ -53,7 +53,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   for (const depId of item.dependsOn) {
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
-    
+
     const root = findBlockingRoot(dep, allItems);
     if (root) return root;
     return dep;
@@ -64,10 +64,10 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
 export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
-  
+
   const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
   let score = impactWeight;
-  
+
   const categoryWeights: Record<string, { weight: number; reason: string }> = {
     "Health": { weight: 10, reason: "wellness priority" },
     "Documents": { weight: 18, reason: "administrative critical" },
@@ -197,10 +197,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (blockingPower > 0) {
     const isCriticalBlocker = criticalPathIds.has(item.id);
-    const blockingWeight = isCriticalBlocker 
-      ? (dependencyValue > 10 ? 25 : 20) 
+    const blockingWeight = isCriticalBlocker
+      ? (dependencyValue > 10 ? 25 : 20)
       : (dependencyValue > 10 ? 15 : 10);
-    
+
     score += blockingPower * blockingWeight;
     reasons.push(`unblocks ${blockingPower} task(s)`);
   }
@@ -263,7 +263,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   const riskThreshold = item.impact >= 4 ? 7 : 5;
   const effortRatio = item.effort / (Math.max(1, slack) * 60);
   const isAlreadyCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
-  
+
   if (!isAlreadyCritical && slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6))) {
     score += 20;
     reasons.push("approaching risk zone");
@@ -295,12 +295,12 @@ function itemsToMap(items: any): Map<string, LifeRecord> {
   return new Map();
 }
 
-export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
+function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBottleneckId: string | null): PlanEntry[] {
   const itemMap = itemsToMap(items);
-  
+
   const criticalPathIds = new Set<string>();
   const urgentItems = items.filter(i => i.status !== "done" && (daysBetween(today, i.dueDate) <= 0 || i.impact >= 4));
-  
+
   const markCriticalTransitive = (id: string) => {
     if (criticalPathIds.has(id)) return;
     criticalPathIds.add(id);
@@ -331,7 +331,7 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
         const childStats = computeTransitiveValues(item.id, visited);
         totalValue += item.impact + (childStats.value * 0.8);
         totalEffort += item.effort + childStats.effort;
-        
+
         const childDue = daysBetween(today, item.dueDate);
         const itemUrgency = (childDue <= 0 ? 45 : (childDue <= 2 ? 30 : (childDue <= 5 ? 15 : 0))) * (item.impact >= 4 ? 1.6 : 1);
         maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
@@ -350,8 +350,6 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     dependencyValues.set(item.id, stats.value);
     urgencyInheritance.set(item.id, stats.urgency);
   }
-
-  const bottleneckId = findBottleneck(items, today)?.id;
 
   const depthCache = new Map<string, number>();
   const getDepth = (id: string): number => {
@@ -373,13 +371,13 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     const item = itemMap.get(id);
     if (!item) return 0;
     const due = daysBetween(today, item.dueDate);
-    
+
     const getChainEffort = (currentId: string, visited = new Set<string>()): number => {
       if (visited.has(currentId)) return 0;
       visited.add(currentId);
       const current = itemMap.get(currentId);
       if (!current) return 0;
-      
+
       let maxDepEffort = 0;
       current.dependsOn?.forEach(depId => {
         const dep = itemMap.get(depId);
@@ -395,20 +393,20 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
     let slack = due - effortDays;
 
     const windowSize = 7;
-    const overlappingTasks = items.filter(i => 
-      i.status !== "done" && 
-      daysBetween(today, i.dueDate) >= 0 && 
+    const overlappingTasks = items.filter(i =>
+      i.status !== "done" &&
+      daysBetween(today, i.dueDate) >= 0 &&
       daysBetween(today, i.dueDate) <= (due + windowSize)
     );
-    
-    const avgImpact = overlappingTasks.length > 0 
-      ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length 
+
+    const avgImpact = overlappingTasks.length > 0
+      ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length
       : 0;
-    
-    const densityPenalty = overlappingTasks.length > 4 
-      ? Math.ceil(overlappingTasks.length * (avgImpact / 3)) 
+
+    const densityPenalty = overlappingTasks.length > 4
+      ? Math.ceil(overlappingTasks.length * (avgImpact / 3))
       : (overlappingTasks.length > 2 ? 1 : 0);
-      
+
     const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
     const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
     const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
@@ -422,27 +420,35 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
 
   const entries = items
     .map((item) => priorityFor(
-      item, 
-      today, 
-      itemMap, 
-      criticalPathIds, 
-      blockingCounts.get(item.id) ?? 0, 
+      item,
+      today,
+      itemMap,
+      criticalPathIds,
+      blockingCounts.get(item.id) ?? 0,
       getDepth(item.id),
       calculateSlack(item.id),
       downstreamEfforts.get(item.id) ?? 0,
       dependencyValues.get(item.id) ?? 0,
-      item.id === bottleneckId,
+      item.id === primaryBottleneckId,
       urgencyInheritance.get(item.id) ?? 0
     ))
     .filter((entry) => entry.item.status !== "done")
-    .sort((a, b) => 
-      b.score - a.score || 
+    .sort((a, b) =>
+      b.score - a.score ||
       b.item.impact - a.item.impact ||
       a.item.dueDate.localeCompare(b.item.dueDate) ||
       (b.item.impact / Math.max(1, b.item.effort)) - (a.item.impact / Math.max(1, a.item.effort))
     );
 
-  const dailyLoad = suggestDailyLoad(items, 480, today);
+  return entries;
+}
+
+export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
+  const itemMap = itemsToMap(items);
+  const primaryBottleneckId = findBottleneckId(items, today);
+  const entries = buildPlanEntries(items, today, primaryBottleneckId);
+
+  const dailyLoad = suggestDailyLoad(items, 480, today, entries);
   const completionDates = new Map<string, string>();
   for (const day of dailyLoad) {
     for (const entry of day.entries) {
@@ -456,9 +462,9 @@ export function buildPlan(items: readonly LifeRecord[], today = localDay()): Pla
   }));
 }
 
-export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
+function findBottleneckId(items: readonly LifeRecord[], today: string): string | null {
   const itemMap = itemsToMap(items);
-  const plan = buildPlan(items, today);
+  const entries = buildPlanEntries(items, today, null);
   const bottleneckWeights = new Map<string, number>();
 
   const depthCache = new Map<string, number>();
@@ -475,7 +481,7 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     return maxDepth;
   };
 
-  for (const entry of plan) {
+  for (const entry of entries) {
     if (entry.isBlocked) {
       const root = findBlockingRoot(entry.item, itemMap);
       if (root) {
@@ -498,6 +504,12 @@ export function findBottleneck(items: readonly LifeRecord[], today = localDay())
     }
   }
 
+  return bottleneckId;
+}
+
+export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
+  const itemMap = itemsToMap(items);
+  const bottleneckId = findBottleneckId(items, today);
   return bottleneckId ? itemMap.get(bottleneckId) || null : null;
 }
 
@@ -514,17 +526,17 @@ export function summarize(items: readonly LifeRecord[], today = localDay()): Pla
   }, { total: 0, completed: 0, overdue: 0, dueSoon: 0, effort: 0, byCategory: {} });
 }
 
-export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: number, today = localDay()) {
+export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: number, today = localDay(), providedEntries?: PlanEntry[]) {
   const baseCapacity = Math.max(1, minutesPerDay);
   const activeItems = items.filter(i => i.status !== "done");
   const totalEffort = activeItems.reduce((sum, i) => sum + i.effort, 0);
-  
+
   const highImpactCount = activeItems.filter(i => i.impact >= 4).length;
   const impactRatio = activeItems.length > 0 ? highImpactCount / activeItems.length : 0;
-  
+
   const workloadDensity = totalEffort / (baseCapacity * 7);
   const dynamicBuffer = workloadDensity > 1.2 ? 0.9 : 1.0;
-  
+
   const impactScale = 1 + (impactRatio * 0.15);
   const capacity = baseCapacity * dynamicBuffer * impactScale;
 
@@ -533,8 +545,8 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     used: 0,
     entries: [] as PlanEntry[],
   }));
-  
-  const plan = buildPlan(items, today).filter(e => e.estimatedCompletionDate === undefined);
+
+  const plan = (providedEntries ?? buildPlanEntries(items, today, null)).filter(e => e.estimatedCompletionDate === undefined);
   const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
 
@@ -556,15 +568,15 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     const sprintBoost = (entry.isCritical && workloadDensity > 1.5) ? 1.5 : 1.0;
     const limit = strictCapacity ? capacity * sprintBoost : capacity * 1.3 * sprintBoost;
-    
+
     const todayDay = days.find(d => d.date === today);
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
-    
+
     const candidates = days.filter((day) => {
       const focusLimit = 5;
       const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
       const isHeavyLift = entry.item.effort > 240;
-      
+
       const urgencyMultiplier = entry.daysUntilDue <= 1 || entry.isCritical ? 2 : 1;
       if (isHeavyLift && heavyLiftCount >= urgencyMultiplier) return false;
 
@@ -591,16 +603,16 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     const available = limit - target.used;
     const taken = Math.min(effortNeeded, available);
-    
+
     if (taken <= 0) return false;
 
     if (!target.entries.includes(entry)) {
       target.entries.push(entry);
     }
-    
+
     target.used += taken;
     remainingEffort.set(itemId, effortNeeded - taken);
-    
+
     if (remainingEffort.get(itemId) === 0) {
       allocatedIds.add(itemId);
     }
@@ -615,7 +627,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   while (changed && pass < 20 && remaining.length > 0) {
     changed = false;
     pass++;
-    
+
     const critical = remaining.filter(e => e.isCritical && e.slack <= 0);
     const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
     const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
@@ -648,7 +660,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       for (const e of stalledCritical) {
         const effortNeeded = remainingEffort.get(e.item.id) ?? 0;
         if (effortNeeded <= 0) continue;
-        
+
         const gap = days.find(d => d.used < baseCapacity * 1.5);
         if (gap) {
           const available = (baseCapacity * 1.5) - gap.used;
