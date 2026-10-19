@@ -25,6 +25,27 @@ export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): 
   if (!Number.isInteger(input.impact) || Number(input.impact) < 1 || Number(input.impact) > 5) {
     errors.push(`${theme.impactLabel} must be an integer from 1 to 5.`);
   }
+  if (input.dependsOn !== undefined) {
+    if (!Array.isArray(input.dependsOn)) {
+      errors.push("Dependencies must be a list of task ids.");
+    } else {
+      const seen = new Set<string>();
+      for (const dependency of input.dependsOn) {
+        if (typeof dependency !== "string" || dependency.length < 1 || dependency.length > 120) {
+          errors.push("Dependencies must be valid task ids.");
+          break;
+        }
+        if (seen.has(dependency)) {
+          errors.push("Dependencies must be unique.");
+          break;
+        }
+        seen.add(dependency);
+      }
+      if (typeof input.id === "string" && Array.isArray(input.dependsOn) && input.dependsOn.includes(input.id)) {
+        errors.push("A task cannot depend on itself.");
+      }
+    }
+  }
   return errors;
 }
 
@@ -49,14 +70,15 @@ function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new S
 
 export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>, visited = new Set<string>()): LifeRecord | null {
   if (visited.has(item.id)) return null;
-  visited.add(item.id);
+  const nextVisited = new Set(visited);
+  nextVisited.add(item.id);
   if (!item.dependsOn || item.dependsOn.length === 0) return null;
 
   for (const depId of item.dependsOn) {
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
 
-    const root = findBlockingRoot(dep, allItems, visited);
+    const root = findBlockingRoot(dep, allItems, nextVisited);
     if (root) return root;
     return dep;
   }
@@ -323,7 +345,8 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
 
   const computeTransitiveValues = (id: string, visited = new Set<string>()) => {
     if (visited.has(id)) return { value: 0, effort: 0, urgency: 0 };
-    visited.add(id);
+    const nextVisited = new Set(visited);
+    nextVisited.add(id);
 
     let totalValue = 0;
     let totalEffort = 0;
@@ -332,7 +355,7 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
     for (const item of items) {
       if (item.status === "done") continue;
       if (item.dependsOn?.includes(id)) {
-        const childStats = computeTransitiveValues(item.id, visited);
+        const childStats = computeTransitiveValues(item.id, nextVisited);
         totalValue += item.impact + (childStats.value * 0.8);
         totalEffort += item.effort + childStats.effort;
 
@@ -380,7 +403,8 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
 
     const getChainEffort = (currentId: string, visited = new Set<string>()): number => {
       if (visited.has(currentId)) return 0;
-      visited.add(currentId);
+      const nextVisited = new Set(visited);
+      nextVisited.add(currentId);
       const current = itemMap.get(currentId);
       if (!current) return 0;
 
@@ -388,7 +412,7 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
       current.dependsOn?.forEach(depId => {
         const dep = itemMap.get(depId);
         if (dep && dep.status !== "done") {
-          maxDepEffort = Math.max(maxDepEffort, getChainEffort(depId, visited));
+          maxDepEffort = Math.max(maxDepEffort, getChainEffort(depId, nextVisited));
         }
       });
       return current.effort + maxDepEffort;

@@ -23,6 +23,23 @@ function isTimestamp(value: unknown): value is string {
   return parsed.toISOString() === canonical;
 }
 
+function decodeDependencyList(value: unknown, index: number): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(`Record ${index + 1} has invalid dependencies.`);
+
+  const dependencies: string[] = [];
+  const seen = new Set<string>();
+  for (const dependency of value) {
+    if (typeof dependency !== "string" || dependency.length < 1 || dependency.length > 120) {
+      throw new Error(`Record ${index + 1} has an invalid dependency.`);
+    }
+    if (seen.has(dependency)) throw new Error(`Record ${index + 1} has a duplicate dependency.`);
+    seen.add(dependency);
+    dependencies.push(dependency);
+  }
+  return dependencies;
+}
+
 function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Record ${index + 1} is not an object.`);
@@ -53,6 +70,8 @@ function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRe
   if (!isTimestamp(raw.createdAt) || !isTimestamp(raw.updatedAt)) {
     throw new Error(`Record ${index + 1} has invalid timestamps.`);
   }
+  const dependsOn = decodeDependencyList(raw.dependsOn, index);
+  if (dependsOn?.includes(raw.id)) throw new Error(`Record ${index + 1} cannot depend on itself.`);
   return {
     id: raw.id,
     title: raw.title.trim(),
@@ -64,6 +83,7 @@ function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRe
     notes: raw.notes,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    ...(dependsOn ? { dependsOn } : {}),
   };
 }
 
