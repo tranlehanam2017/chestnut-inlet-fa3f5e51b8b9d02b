@@ -47,14 +47,16 @@ function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new S
   return false;
 }
 
-export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>): LifeRecord | null {
+export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>, visited = new Set<string>()): LifeRecord | null {
+  if (visited.has(item.id)) return null;
+  visited.add(item.id);
   if (!item.dependsOn || item.dependsOn.length === 0) return null;
 
   for (const depId of item.dependsOn) {
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
 
-    const root = findBlockingRoot(dep, allItems);
+    const root = findBlockingRoot(dep, allItems, visited);
     if (root) return root;
     return dep;
   }
@@ -354,13 +356,15 @@ function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBo
   }
 
   const depthCache = new Map<string, number>();
-  const getDepth = (id: string): number => {
+  const getDepth = (id: string, visited = new Set<string>()): number => {
     if (depthCache.has(id)) return depthCache.get(id)!;
+    if (visited.has(id)) return 0;
+    visited.add(id);
     let maxDepth = 0;
     for (const item of items) {
       if (item.status === "done") continue;
       if (item.dependsOn?.includes(id)) {
-        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id));
+        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id, new Set(visited)));
       }
     }
     depthCache.set(id, maxDepth);
@@ -488,13 +492,15 @@ function findBottleneckId(items: readonly LifeRecord[], today: string): string |
   const bottleneckWeights = new Map<string, number>();
 
   const depthCache = new Map<string, number>();
-  const getDepth = (id: string): number => {
+  const getDepth = (id: string, visited = new Set<string>()): number => {
     if (depthCache.has(id)) return depthCache.get(id)!;
+    if (visited.has(id)) return 0;
+    visited.add(id);
     let maxDepth = 0;
     for (const item of items) {
       if (item.status === "done") continue;
       if (item.dependsOn?.includes(id)) {
-        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id));
+        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id, new Set(visited)));
       }
     }
     depthCache.set(id, maxDepth);
