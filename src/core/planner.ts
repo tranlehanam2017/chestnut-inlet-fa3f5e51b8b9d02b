@@ -507,7 +507,7 @@ function findBottleneckId(items: readonly LifeRecord[], today: string): string |
       if (root) {
         const criticalityMultiplier = entry.isCritical ? 5 : 1;
         const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
-        const volumeWeight = entry.item.effort / 60;
+        const volumeWeight = (root.effort / 60) * (entry.isCritical ? 2 : 1);
         const chainWeight = getDepth(root.id) * 8;
         const urgencyWeight = entry.daysUntilDue <= 2 ? 20 : 0;
         bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight + urgencyWeight);
