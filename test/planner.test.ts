@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { importJson } from "../src/core/exchange";
-import { buildPlan, daysBetween, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
+import { buildPlan, daysBetween, findBlockingRoot, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
 import { theme } from "../src/theme";
 import type { LifeRecord } from "../types";
 
@@ -47,6 +47,12 @@ describe("planning engine", () => {
     const plan = buildPlan([a, b], "2026-08-19");
     expect(plan.every(e => e.reasons.some(r => r.includes("circular")))).toBe(true);
     expect(plan.every(e => e.isBlocked)).toBe(true);
+  });
+  it("does not report a blocking root for a dependency cycle", () => {
+    const a = item({ id: "a", dependsOn: ["b"] });
+    const b = item({ id: "b", dependsOn: ["a"] });
+    const itemMap = new Map([a, b].map((record) => [record.id, record]));
+    expect(findBlockingRoot(a, itemMap)).toBeNull();
   });
   it("boosts priority of tasks with high blocking power", () => {
     const root = item({ id: "root", impact: 1 });
