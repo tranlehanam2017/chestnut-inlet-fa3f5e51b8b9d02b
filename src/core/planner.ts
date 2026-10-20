@@ -75,6 +75,8 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   if (!item.dependsOn || item.dependsOn.length === 0) return null;
 
   for (const depId of item.dependsOn) {
+    if (nextVisited.has(depId)) continue;
+
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
 
@@ -192,10 +194,10 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
 
   if (item.status === "done") score = -1;
 
-  const blockers = item.dependsOn?.filter(depId => {
+  const blockers = [...new Set(item.dependsOn ?? [])].filter((depId) => {
     const dep = allItems.get(depId);
-    return dep && dep.status !== "done";
-  }) ?? [];
+    return !!dep && dep.status !== "done";
+  });
 
   const isBlocked = blockers.length > 0;
   const isCircular = hasCycle(item.id, allItems);
