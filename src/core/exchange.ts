@@ -83,7 +83,7 @@ function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRe
     notes: raw.notes,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
-    ...(dependsOn ? { dependsOn } : {}),
+    ...(dependsOn !== undefined ? { dependsOn } : {}),
   };
 }
 

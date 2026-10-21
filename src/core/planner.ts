@@ -66,7 +66,33 @@ function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new S
   return false;
 }
 
+function reachesTarget(start: string, target: string, allItems: Map<string, LifeRecord>, visited = new Set<string>()): boolean {
+  const item = allItems.get(start);
+  if (!item || item.status === "done") return false;
+  if (start === target) return true;
+  if (visited.has(start)) return false;
+
+  visited.add(start);
+  for (const depId of [...new Set(item.dependsOn ?? [])]) {
+    if (depId === target) return true;
+    if (reachesTarget(depId, target, allItems, visited)) return true;
+  }
+  return false;
+}
+
+function isOnCycle(id: string, allItems: Map<string, LifeRecord>): boolean {
+  const item = allItems.get(id);
+  if (!item || item.status === "done") return false;
+
+  for (const depId of [...new Set(item.dependsOn ?? [])]) {
+    if (depId === id) return true;
+    if (reachesTarget(depId, id, allItems, new Set([id]))) return true;
+  }
+  return false;
+}
+
 export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>, visited = new Set<string>()): LifeRecord | null {
+  if (item.status === "done") return null;
   if (visited.has(item.id)) return null;
   const nextVisited = new Set(visited);
   nextVisited.add(item.id);
@@ -198,7 +224,7 @@ export function priorityFor(item: LifeRecord, today = localDay(), allItems = ite
   });
 
   const isBlocked = blockers.length > 0;
-  const isCircular = hasCycle(item.id, allItems);
+  const isCircular = isOnCycle(item.id, allItems);
 
   if (isCircular) {
     score -= 200;
