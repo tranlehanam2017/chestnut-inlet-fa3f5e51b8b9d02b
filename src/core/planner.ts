@@ -94,6 +94,7 @@ function isOnCycle(id: string, allItems: Map<string, LifeRecord>): boolean {
 export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>, visited = new Set<string>()): LifeRecord | null {
   if (item.status === "done") return null;
   if (visited.has(item.id)) return null;
+  if (isOnCycle(item.id, allItems)) return null;
   const nextVisited = new Set(visited);
   nextVisited.add(item.id);
   if (!item.dependsOn || item.dependsOn.length === 0) return null;
