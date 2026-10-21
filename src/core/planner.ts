@@ -50,18 +50,16 @@ export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): 
 }
 
 function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new Set<string>(), stack = new Set<string>()): boolean {
+  const item = allItems.get(id);
+  if (!item || item.status === "done") return false;
+  if (stack.has(id)) return true;
+  if (visited.has(id)) return false;
+
   visited.add(id);
   stack.add(id);
 
-  const item = allItems.get(id);
-  if (item && item.dependsOn) {
-    for (const depId of item.dependsOn) {
-      if (!visited.has(depId)) {
-        if (hasCycle(depId, allItems, visited, stack)) return true;
-      } else if (stack.has(depId)) {
-        return true;
-      }
-    }
+  for (const depId of [...new Set(item.dependsOn ?? [])]) {
+    if (hasCycle(depId, allItems, visited, stack)) return true;
   }
 
   stack.delete(id);
