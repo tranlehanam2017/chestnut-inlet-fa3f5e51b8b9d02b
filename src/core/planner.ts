@@ -74,7 +74,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
   nextVisited.add(item.id);
   if (!item.dependsOn || item.dependsOn.length === 0) return null;
 
-  for (const depId of item.dependsOn) {
+  for (const depId of [...new Set(item.dependsOn)]) {
     if (nextVisited.has(depId)) continue;
 
     const dep = allItems.get(depId);
@@ -82,12 +82,12 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
 
     const root = findBlockingRoot(dep, allItems, nextVisited);
     if (root) return root;
-    return dep;
+    if (!hasCycle(dep.id, allItems)) return dep;
   }
   return null;
 }
 
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap(item), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0, categoryPressure = 1): PlanEntry {
+export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap([item]), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0, categoryPressure = 1): PlanEntry {
   const daysUntilDue = daysBetween(today, item.dueDate);
   const reasons: string[] = [];
 
