@@ -104,6 +104,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
 
     const dep = allItems.get(depId);
     if (!dep || dep.status === "done") continue;
+    if (isOnCycle(dep.id, allItems)) continue;
 
     const root = findBlockingRoot(dep, allItems, nextVisited);
     if (root) return root;
