@@ -27,7 +27,11 @@ export class RecordStore {
   }
 
   remove(id: string): void {
-    this.records = this.records.filter((item) => item.id !== id);
+    this.records = this.records
+      .filter((item) => item.id !== id)
+      .map((item) => item.dependsOn?.includes(id)
+        ? { ...item, dependsOn: item.dependsOn.filter((dep) => dep !== id) }
+        : item);
     this.commit();
   }
 
