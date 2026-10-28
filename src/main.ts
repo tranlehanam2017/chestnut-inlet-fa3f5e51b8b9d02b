@@ -1,7 +1,7 @@
 import "./style.css";
 import { theme } from "./theme";
 import { RecordStore } from "./core/store";
-import { buildPlan, suggestDailyLoad, summarize, localDay } from "./core/planner";
+import { buildPlan, suggestDailyLoad, summarize, localDay, validateRecord } from "./core/planner";
 import { exportJson, exportCsv, download, importJson } from "./core/exchange";
 import { revisionLedger } from "./generated/revision-ledger";
 import type { ItemStatus, LifeRecord } from "./types";
@@ -180,12 +180,16 @@ function render(): void {
   );
 
   const actions = element("div", "form-actions");
+  const formErrors = element("div", "errors");
   const addButton = element("button");
   addButton.type = "button";
   addButton.textContent = `Add ${theme.itemLabel}`;
   addButton.addEventListener("click", () => {
     const title = titleInput.value.trim();
-    if (!title) return;
+    if (!title) {
+      formErrors.textContent = `${theme.itemLabel} needs a title.`;
+      return;
+    }
     const now = new Date().toISOString();
     const dependsOn = dependenciesInput.value
       .split(",")
@@ -204,12 +208,19 @@ function render(): void {
       updatedAt: now,
       dependsOn,
     };
+    const validationErrors = validateRecord(record, theme);
+    if (validationErrors.length > 0) {
+      formErrors.textContent = validationErrors.join(" ");
+      return;
+    }
+    formErrors.textContent = "";
     store.upsert(record);
     form.reset();
     statusSelect.value = "planned";
     effortInput.value = "30";
     impactInput.value = "3";
     dueDateInput.value = localDay(new Date(Date.now() + 7 * 86_400_000));
+    dependenciesInput.value = "";
   });
   actions.append(addButton);
 
@@ -246,7 +257,7 @@ function render(): void {
   fileLabel.append(fileInput, document.createTextNode("Import JSON"));
   exchange.append(exportJsonButton, exportCsvButton, fileLabel);
 
-  form.append(grid, actions, exchange);
+  form.append(grid, actions, formErrors, exchange);
   formPanel.append(form);
 
   const listPanel = element("section", "panel");
@@ -278,11 +289,18 @@ function render(): void {
       const controls = element("div", "record-actions");
       const score = element("strong");
       score.textContent = entry.score.toFixed(1);
+      const doneButton = element("button", "ghost");
+      doneButton.type = "button";
+      doneButton.textContent = "Done";
+      doneButton.addEventListener("click", () => {
+        const now = new Date().toISOString();
+        store.upsert({ ...entry.item, status: "done", updatedAt: now });
+      });
       const removeButton = element("button", "ghost");
       removeButton.type = "button";
       removeButton.textContent = "Delete";
       removeButton.addEventListener("click", () => store.remove(entry.item.id));
-      controls.append(score, removeButton);
+      controls.append(score, doneButton, removeButton);
       row.append(body, controls);
       list.append(row);
     }
