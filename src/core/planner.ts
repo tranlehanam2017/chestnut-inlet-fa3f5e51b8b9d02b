@@ -106,9 +106,23 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
     if (!dep || dep.status === "done") continue;
     if (isOnCycle(dep.id, allItems)) continue;
 
-    const root = findBlockingRoot(dep, allItems, nextVisited);
-    if (root) return root;
-    return dep;
+    const unfinishedDependencies = dep.dependsOn ?? [];
+    const hasUnfinishedDependency = unfinishedDependencies.some((nextId) => {
+      const next = allItems.get(nextId);
+      return !!next && next.status !== "done";
+    });
+    const hasUnfinishedNonCycleDependency = unfinishedDependencies.some((nextId) => {
+      const next = allItems.get(nextId);
+      return !!next && next.status !== "done" && !isOnCycle(next.id, allItems);
+    });
+
+    if (hasUnfinishedNonCycleDependency) {
+      const root = findBlockingRoot(dep, allItems, nextVisited);
+      if (root) return root;
+      continue;
+    }
+
+    if (!hasUnfinishedDependency) return dep;
   }
   return null;
 }
