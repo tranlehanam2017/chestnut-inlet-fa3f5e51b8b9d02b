@@ -17,8 +17,6 @@ function isTimestamp(value: unknown): value is string {
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return false;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return false;
-  // Backups emitted by this app always use UTC. Accept seconds-only input too, but compare the
-  // normalized instant so impossible dates (for example February 30) cannot roll into March.
   const canonical = value.includes(".") ? value : value.replace(/Z$/, ".000Z");
   return parsed.toISOString() === canonical;
 }
@@ -91,12 +89,18 @@ export function importJson(source: string, theme: ThemeConfig): LifeRecord[] {
   const parsed = JSON.parse(source) as { schema?: unknown; records?: unknown };
   if (parsed.schema !== 1 || !Array.isArray(parsed.records)) throw new Error("Unsupported backup format.");
   const ids = new Set<string>();
-  return parsed.records.map((value, index) => {
+  const records = parsed.records.map((value, index) => {
     const item = decodeRecord(value, index, theme);
     if (ids.has(item.id)) throw new Error(`Record ${index + 1} has a duplicate id.`);
     ids.add(item.id);
     return item;
   });
+  const idSet = new Set(records.map((record) => record.id));
+  return records.map((record) =>
+    record.dependsOn
+      ? { ...record, dependsOn: record.dependsOn.filter((dependency) => idSet.has(dependency)) }
+      : record,
+  );
 }
 
 function csvCell(value: unknown): string { return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`; }
