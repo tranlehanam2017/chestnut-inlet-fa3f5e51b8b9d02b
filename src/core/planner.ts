@@ -14,11 +14,16 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((end - start) / DAY_MS);
 }
 
+function isCalendarDay(value: string): boolean {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): string[] {
   const errors: string[] = [];
   if (!input.title?.trim()) errors.push(`${theme.itemLabel} needs a title.`);
   if (!input.category || !theme.categories.includes(input.category)) errors.push("Choose a valid category.");
-  if (!input.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)) errors.push("Choose a valid date.");
+  if (!input.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) || !isCalendarDay(input.dueDate)) errors.push("Choose a valid date.");
   if (!Number.isFinite(input.effort) || Number(input.effort) < 1 || Number(input.effort) > 480) {
     errors.push(`${theme.effortLabel} must be between 1 and 480.`);
   }
