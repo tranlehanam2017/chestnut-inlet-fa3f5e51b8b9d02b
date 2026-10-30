@@ -127,7 +127,7 @@ export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRec
       continue;
     }
 
-    if (!hasUnfinishedDependency) return dep;
+    return dep;
   }
   return null;
 }
