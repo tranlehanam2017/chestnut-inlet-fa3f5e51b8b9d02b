@@ -3,6 +3,20 @@ import type { LifeRecord } from "../types";
 interface StoreEnvelope { version: 1; records: LifeRecord[]; savedAt: string }
 type Listener = (records: readonly LifeRecord[]) => void;
 
+function normalizeDependencies(records: readonly LifeRecord[]): LifeRecord[] {
+  const ids = new Set(records.map((record) => record.id));
+  return records.map((record) => {
+    if (!record.dependsOn) return { ...record };
+    const seen = new Set<string>();
+    const dependsOn = record.dependsOn.filter((dependency) => {
+      if (dependency === record.id || !ids.has(dependency) || seen.has(dependency)) return false;
+      seen.add(dependency);
+      return true;
+    });
+    return { ...record, dependsOn };
+  });
+}
+
 export class RecordStore {
   private readonly listeners = new Set<Listener>();
   private records: LifeRecord[];
@@ -21,33 +35,36 @@ export class RecordStore {
 
   upsert(record: LifeRecord): void {
     const at = this.records.findIndex((item) => item.id === record.id);
-    if (at >= 0) this.records[at] = { ...record };
-    else this.records.push({ ...record });
+    const candidate = at >= 0 ? record : record;
+    const normalized = normalizeDependencies([...this.records.filter((item) => item.id !== record.id), candidate]);
+    this.records = normalized;
     this.commit();
   }
 
   remove(id: string): void {
-    this.records = this.records
-      .filter((item) => item.id !== id)
-      .map((item) => item.dependsOn?.includes(id)
-        ? { ...item, dependsOn: item.dependsOn.filter((dep) => dep !== id) }
-        : item);
+    this.records = normalizeDependencies(
+      this.records
+        .filter((item) => item.id !== id)
+        .map((item) => item.dependsOn?.includes(id)
+          ? { ...item, dependsOn: item.dependsOn.filter((dep) => dep !== id) }
+          : item),
+    );
     this.commit();
   }
 
   replace(records: LifeRecord[]): void {
-    this.records = records.map((item) => ({ ...item }));
+    this.records = normalizeDependencies(records);
     this.commit();
   }
 
   private read(fallback: LifeRecord[]): LifeRecord[] {
     try {
       const parsed = JSON.parse(localStorage.getItem(this.key) ?? "null") as StoreEnvelope | null;
-      if (parsed?.version === 1 && Array.isArray(parsed.records)) return parsed.records;
+      if (parsed?.version === 1 && Array.isArray(parsed.records)) return normalizeDependencies(parsed.records);
     } catch {
       localStorage.removeItem(this.key);
     }
-    return fallback;
+    return normalizeDependencies(fallback);
   }
 
   private commit(): void {
