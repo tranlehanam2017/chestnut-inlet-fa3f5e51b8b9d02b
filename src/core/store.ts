@@ -3,7 +3,7 @@ import type { LifeRecord } from "../types";
 interface StoreEnvelope { version: 1; records: LifeRecord[]; savedAt: string }
 type Listener = (records: readonly LifeRecord[]) => void;
 
-function normalizeDependencies(records: readonly LifeRecord[]): LifeRecord[] {
+export function normalizeDependencies(records: readonly LifeRecord[]): LifeRecord[] {
   const ids = new Set(records.map((record) => record.id));
   return records.map((record) => {
     if (!record.dependsOn) return { ...record };
@@ -34,10 +34,7 @@ export class RecordStore {
   }
 
   upsert(record: LifeRecord): void {
-    const at = this.records.findIndex((item) => item.id === record.id);
-    const candidate = at >= 0 ? record : record;
-    const normalized = normalizeDependencies([...this.records.filter((item) => item.id !== record.id), candidate]);
-    this.records = normalized;
+    this.records = normalizeDependencies([...this.records.filter((item) => item.id !== record.id), record]);
     this.commit();
   }
 
@@ -69,7 +66,11 @@ export class RecordStore {
 
   private commit(): void {
     const envelope: StoreEnvelope = { version: 1, records: this.records, savedAt: new Date().toISOString() };
-    localStorage.setItem(this.key, JSON.stringify(envelope));
+    try {
+      localStorage.setItem(this.key, JSON.stringify(envelope));
+    } catch {
+      // Storage can be unavailable or quota-limited; keep the update in memory either way.
+    }
     for (const listener of this.listeners) listener(this.all());
   }
 }
