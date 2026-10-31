@@ -59,7 +59,11 @@ export class RecordStore {
       const parsed = JSON.parse(localStorage.getItem(this.key) ?? "null") as StoreEnvelope | null;
       if (parsed?.version === 1 && Array.isArray(parsed.records)) return normalizeDependencies(parsed.records);
     } catch {
-      localStorage.removeItem(this.key);
+      try {
+        localStorage.removeItem(this.key);
+      } catch {
+        // Storage can be unavailable; keep the in-memory fallback either way.
+      }
     }
     return normalizeDependencies(fallback);
   }
