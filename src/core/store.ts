@@ -32,7 +32,7 @@ export class RecordStore {
   private records: LifeRecord[];
 
   constructor(private readonly key: string, initial: LifeRecord[]) {
-    this.records = normalizeDependencies(initial.map(cloneRecord));
+    this.records = this.read(initial);
   }
 
   all(): readonly LifeRecord[] { return this.records.map(cloneRecord); }
