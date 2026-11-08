@@ -283,7 +283,10 @@ function render(): void {
       const itemTitle = element("h3");
       itemTitle.textContent = entry.item.title;
       const itemMeta = element("p");
-      itemMeta.textContent = `${entry.item.category} · ${entry.item.effort} min · impact ${entry.item.impact} · ${entry.reasons.join(", ")}`;
+      const completionSuffix = entry.estimatedCompletionDate
+        ? ` · est. complete ${entry.estimatedCompletionDate}`
+        : "";
+      itemMeta.textContent = `${entry.item.category} · ${entry.item.effort} min · impact ${entry.item.impact} · ${entry.reasons.join(", ")}${completionSuffix}`;
       body.append(itemTitle, itemMeta);
 
       const controls = element("div", "record-actions");
