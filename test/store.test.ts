@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LifeRecord } from "../src/types";
-import { normalizeDependencies } from "../src/core/store";
+import { isPersistedRecord, normalizeDependencies } from "../src/core/store";
 
 const record = (overrides: Partial<LifeRecord> = {}): LifeRecord => ({
   id: "one",
@@ -31,5 +31,20 @@ describe("record store dependency normalization", () => {
     const records = [record({ id: "item", dependsOn: ["missing"] })];
 
     expect(normalizeDependencies(records)[0]?.dependsOn).toEqual([]);
+  });
+});
+
+describe("persisted record validation", () => {
+  it("accepts a valid persisted record", () => {
+    expect(isPersistedRecord(record())).toBe(true);
+    expect(isPersistedRecord(record({ dependsOn: ["parent"] }))).toBe(true);
+  });
+
+  it("rejects malformed persisted records", () => {
+    expect(isPersistedRecord(null)).toBe(false);
+    expect(isPersistedRecord(record({ status: "paused" as LifeRecord["status"] }))).toBe(false);
+    expect(isPersistedRecord(record({ impact: 9 }))).toBe(false);
+    expect(isPersistedRecord(record({ dueDate: "2026-02-30" }))).toBe(false);
+    expect(isPersistedRecord(record({ dependsOn: ["missing", 42] as unknown as string[] }))).toBe(false);
   });
 });
