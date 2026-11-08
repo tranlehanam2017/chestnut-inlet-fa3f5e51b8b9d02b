@@ -646,7 +646,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     entries: [] as PlanEntry[],
   }));
 
-  const plan = (providedEntries ?? buildPlanEntries(items, today, null)).filter(e => e.estimatedCompletionDate === undefined);
+  const plan = providedEntries ?? buildPlanEntries(items, today, null);
   const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
 
