@@ -688,7 +688,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     if (candidates.length === 0) return false;
 
-    let target;
+    let target: (typeof days)[number] | undefined;
     if (alreadyStartedToday && todayDay && todayDay.used < limit) {
       target = todayDay;
     } else if (preferEarliest) {
