@@ -45,7 +45,7 @@ function render(): void {
   const today = localDay();
   const plan = buildPlan(records, today);
   const summary = summarize(records, today);
-  const week = suggestDailyLoad(records, 480, today);
+  const week = suggestDailyLoad(records, 480, today, plan);
 
   app.replaceChildren();
 
