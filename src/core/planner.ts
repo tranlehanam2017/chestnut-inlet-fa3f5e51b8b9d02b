@@ -54,23 +54,6 @@ export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): 
   return errors;
 }
 
-function hasCycle(id: string, allItems: Map<string, LifeRecord>, visited = new Set<string>(), stack = new Set<string>()): boolean {
-  const item = allItems.get(id);
-  if (!item || item.status === "done") return false;
-  if (stack.has(id)) return true;
-  if (visited.has(id)) return false;
-
-  visited.add(id);
-  stack.add(id);
-
-  for (const depId of [...new Set(item.dependsOn ?? [])]) {
-    if (hasCycle(depId, allItems, visited, stack)) return true;
-  }
-
-  stack.delete(id);
-  return false;
-}
-
 function reachesTarget(start: string, target: string, allItems: Map<string, LifeRecord>, visited = new Set<string>()): boolean {
   const item = allItems.get(start);
   if (!item || item.status === "done") return false;
@@ -760,6 +743,9 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       for (const e of stalledCritical) {
         const effortNeeded = remainingEffort.get(e.item.id) ?? 0;
         if (effortNeeded <= 0) continue;
+
+        const blockedByDependency = (e.item.dependsOn ?? []).some(depId => (remainingEffort.get(depId) ?? 0) > 0);
+        if (blockedByDependency) continue;
 
         const gap = days.find(d => d.used < baseCapacity * 1.5);
         if (gap) {
