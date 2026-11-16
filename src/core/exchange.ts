@@ -103,6 +103,119 @@ export function importJson(source: string, theme: ThemeConfig): LifeRecord[] {
   );
 }
 
+const CSV_HEADER = ["id", "title", "category", "dueDate", "effort", "impact", "status", "notes"] as const;
+
+function parseCsvRows(source: string): string[][] {
+  const text = source.replace(/^\ufeff/, "");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  let atCellStart = true;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === '"' && atCellStart) {
+      inQuotes = true;
+      atCellStart = false;
+      continue;
+    }
+    if (char === ',') {
+      row.push(cell);
+      cell = "";
+      atCellStart = true;
+      continue;
+    }
+    if (char === '\n') {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      atCellStart = true;
+      continue;
+    }
+    if (char === '\r') {
+      if (text[i + 1] === '\n') continue;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      atCellStart = true;
+      continue;
+    }
+    cell += char;
+    atCellStart = false;
+  }
+
+  if (row.length > 0 || cell !== "" || atCellStart === false) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows.filter((candidate) => candidate.some((value) => value.trim() !== ""));
+}
+
+export function importCsv(source: string, theme: ThemeConfig): LifeRecord[] {
+  const rows = parseCsvRows(source);
+  if (rows.length === 0) throw new Error("CSV file is empty.");
+
+  const header = rows[0];
+  if (
+    header.length !== CSV_HEADER.length ||
+    !header.every((cell, index) => cell === CSV_HEADER[index])
+  ) {
+    throw new Error("Unsupported CSV header.");
+  }
+
+  const now = new Date().toISOString();
+  const ids = new Set<string>();
+  const records: LifeRecord[] = [];
+
+  rows.slice(1).forEach((row, index) => {
+    if (row.length !== CSV_HEADER.length) {
+      throw new Error(`Record ${index + 1} has an invalid column count.`);
+    }
+
+    const [id, title, category, dueDate, effort, impact, status, notes] = row;
+    const record = decodeRecord(
+      {
+        id,
+        title,
+        category,
+        dueDate,
+        effort: Number(effort),
+        impact: Number(impact),
+        status,
+        notes,
+        createdAt: now,
+        updatedAt: now,
+      },
+      index,
+      theme,
+    );
+
+    if (ids.has(record.id)) throw new Error(`Record ${index + 1} has a duplicate id.`);
+    ids.add(record.id);
+    records.push(record);
+  });
+
+  return records;
+}
+
 function csvCell(value: unknown): string { return `"${String(value ?? "").replaceAll("\"", "\"\"")}"`; }
 
 export function exportCsv(records: readonly LifeRecord[]): string {

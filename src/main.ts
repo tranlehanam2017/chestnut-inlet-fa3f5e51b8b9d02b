@@ -2,7 +2,7 @@ import "./style.css";
 import { theme } from "./theme";
 import { RecordStore } from "./core/store";
 import { buildPlan, suggestDailyLoad, summarize, localDay, validateRecord, findBlockingRoot, findBottleneck } from "./core/planner";
-import { exportJson, exportCsv, download, importJson } from "./core/exchange";
+import { exportJson, exportCsv, download, importJson, importCsv } from "./core/exchange";
 import { revisionLedger } from "./generated/revision-ledger";
 import type { ItemStatus, LifeRecord } from "./types";
 
@@ -298,13 +298,16 @@ function render(): void {
   const fileLabel = element("label", "file");
   const fileInput = element("input");
   fileInput.type = "file";
-  fileInput.accept = "application/json";
+  fileInput.accept = "application/json,text/csv,.json,.csv";
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
     try {
       const text = await file.text();
-      store.replace(importJson(text, theme));
+      const imported = file.name.toLowerCase().endsWith(".csv")
+        ? importCsv(text, theme)
+        : importJson(text, theme);
+      store.replace(imported);
       editingId = null;
       selectedId = null;
     } catch (error) {
@@ -312,7 +315,7 @@ function render(): void {
     }
     fileInput.value = "";
   });
-  fileLabel.append(fileInput, document.createTextNode("Import JSON"));
+  fileLabel.append(fileInput, document.createTextNode("Import JSON/CSV"));
   exchange.append(exportJsonButton, exportCsvButton, fileLabel);
 
   form.append(grid, actions, formErrors, exchange);

@@ -11,7 +11,7 @@ an independent project, and its neutral repository name is **chestnut-inlet-fa3f
 - Computes an explainable priority score from urgency, impact, effort, and status.
 - Builds a seven-day plan with workload and category summaries.
 - Persists data in browser storage with a versioned envelope and safe recovery.
-- Imports strictly runtime-validated JSON, produces JSON/CSV exports, and includes deterministic tests.
+- Imports strictly runtime-validated JSON or CSV, produces JSON/CSV exports, and includes deterministic tests.
 - Displays the repository revision ledger used by scheduled maintenance commits.
 
 ## Run locally
