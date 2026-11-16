@@ -316,7 +316,21 @@ function render(): void {
     fileInput.value = "";
   });
   fileLabel.append(fileInput, document.createTextNode("Import JSON/CSV"));
-  exchange.append(exportJsonButton, exportCsvButton, fileLabel);
+
+  const clearCompletedButton = element("button", "ghost");
+  clearCompletedButton.type = "button";
+  clearCompletedButton.textContent = "Clear completed";
+  clearCompletedButton.addEventListener("click", () => {
+    const completed = records.filter((record) => record.status === "done");
+    if (completed.length === 0) return;
+    if (!window.confirm(`Remove ${completed.length} completed task(s)?`)) return;
+    const completedIds = new Set(completed.map((record) => record.id));
+    if (editingId && completedIds.has(editingId)) editingId = null;
+    if (selectedId && completedIds.has(selectedId)) selectedId = null;
+    store.clearCompleted();
+  });
+
+  exchange.append(exportJsonButton, exportCsvButton, fileLabel, clearCompletedButton);
 
   form.append(grid, actions, formErrors, exchange);
   formPanel.append(form);

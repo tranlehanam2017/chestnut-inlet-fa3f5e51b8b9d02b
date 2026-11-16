@@ -110,6 +110,13 @@ export class RecordStore {
     this.commit();
   }
 
+  clearCompleted(): void {
+    const remaining = this.records.filter((record) => record.status !== "done");
+    if (remaining.length === this.records.length) return;
+    this.records = normalizeDependencies(remaining.map(cloneRecord));
+    this.commit();
+  }
+
   replace(records: LifeRecord[]): void {
     this.records = normalizeDependencies(records.map(cloneRecord));
     this.commit();
