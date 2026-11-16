@@ -31,6 +31,8 @@ if (!app) throw new Error("Missing #app root element.");
 
 let records: readonly LifeRecord[] = [];
 let searchQuery = "";
+let categoryFilter = "all";
+let quickFilter: "all" | "overdue" | "due-soon" | "blocked" = "all";
 let editingId: string | null = null;
 let selectedId: string | null = null;
 
@@ -73,19 +75,22 @@ function render(): void {
   if (editingId && !editingRecord) editingId = null;
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const visibleEntries = normalizedQuery
-    ? plan.filter((entry) => {
-        const haystack = [
-          entry.item.title,
-          entry.item.category,
-          entry.item.notes,
-          ...entry.reasons,
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalizedQuery);
-      })
-    : plan;
+  const filteredEntries = plan.filter((entry) => {
+    if (categoryFilter !== "all" && entry.item.category !== categoryFilter) return false;
+    if (quickFilter === "overdue" && !(entry.daysUntilDue < 0)) return false;
+    if (quickFilter === "due-soon" && !(entry.daysUntilDue >= 0 && entry.daysUntilDue <= 7)) return false;
+    if (quickFilter === "blocked" && !entry.isBlocked) return false;
+    if (!normalizedQuery) return true;
+    const haystack = [
+      entry.item.title,
+      entry.item.category,
+      entry.item.notes,
+      ...entry.reasons,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
 
   app.replaceChildren();
 
@@ -348,7 +353,48 @@ function render(): void {
     searchQuery = (event.currentTarget as HTMLInputElement).value;
     render();
   });
-  listTitle.append(listHeading, searchInput);
+
+  const categoryFilterSelect = element("select");
+  categoryFilterSelect.id = "category-filter";
+  const allCategoriesOption = element("option");
+  allCategoriesOption.value = "all";
+  allCategoriesOption.textContent = "All categories";
+  categoryFilterSelect.append(allCategoriesOption);
+  for (const category of theme.categories) {
+    const option = element("option");
+    option.value = category;
+    option.textContent = category;
+    categoryFilterSelect.append(option);
+  }
+  categoryFilterSelect.value = categoryFilter;
+  categoryFilterSelect.addEventListener("change", (event) => {
+    categoryFilter = (event.currentTarget as HTMLSelectElement).value;
+    render();
+  });
+
+  const quickFilterSelect = element("select");
+  quickFilterSelect.id = "quick-filter";
+  const quickFilterOptions: readonly [string, string][] = [
+    ["all", "All tasks"],
+    ["overdue", "Overdue"],
+    ["due-soon", "Due soon"],
+    ["blocked", "Blocked"],
+  ];
+  for (const [value, label] of quickFilterOptions) {
+    const option = element("option");
+    option.value = value;
+    option.textContent = label;
+    quickFilterSelect.append(option);
+  }
+  quickFilterSelect.value = quickFilter;
+  quickFilterSelect.addEventListener("change", (event) => {
+    quickFilter = (event.currentTarget as HTMLSelectElement).value as typeof quickFilter;
+    render();
+  });
+
+  const filterControls = element("div", "filter-group");
+  filterControls.append(categoryFilterSelect, quickFilterSelect);
+  listTitle.append(listHeading, searchInput, filterControls);
   listPanel.append(listTitle);
 
   const insight = element("p");
@@ -359,12 +405,18 @@ function render(): void {
   listPanel.append(insight);
 
   const list = element("div");
-  if (visibleEntries.length === 0) {
+  if (filteredEntries.length === 0) {
     const empty = element("div", "empty");
-    empty.textContent = normalizedQuery ? "No matching tasks." : "No active tasks.";
+    if (normalizedQuery) {
+      empty.textContent = "No matching tasks.";
+    } else if (categoryFilter !== "all" || quickFilter !== "all") {
+      empty.textContent = "No tasks match the selected filters.";
+    } else {
+      empty.textContent = "No active tasks.";
+    }
     list.append(empty);
   } else {
-    for (const entry of visibleEntries) {
+    for (const entry of filteredEntries) {
       const row = element("article", "record");
       if (entry.isCritical) row.classList.add("critical");
       if (entry.isBlocked) row.classList.add("blocked");
