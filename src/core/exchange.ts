@@ -68,6 +68,9 @@ function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRe
   if (!isTimestamp(raw.createdAt) || !isTimestamp(raw.updatedAt)) {
     throw new Error(`Record ${index + 1} has invalid timestamps.`);
   }
+  if (raw.pinned !== undefined && typeof raw.pinned !== "boolean") {
+    throw new Error(`Record ${index + 1} has an invalid pinned flag.`);
+  }
   const dependsOn = decodeDependencyList(raw.dependsOn, index);
   if (dependsOn?.includes(raw.id)) throw new Error(`Record ${index + 1} cannot depend on itself.`);
   return {
@@ -81,6 +84,7 @@ function decodeRecord(value: unknown, index: number, theme: ThemeConfig): LifeRe
     notes: raw.notes,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    ...(raw.pinned !== undefined ? { pinned: raw.pinned as boolean } : {}),
     ...(dependsOn !== undefined ? { dependsOn } : {}),
   };
 }

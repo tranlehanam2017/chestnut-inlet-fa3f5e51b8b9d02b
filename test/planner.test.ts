@@ -102,6 +102,14 @@ describe("planning engine", () => {
     const hiEntry = plan.find(e => e.item.id === "hi");
     expect(hiEntry?.reasons.some(r => r.includes("critical path urgency"))).toBe(true);
   });
+  it("boosts pinned tasks to the top of the plan", () => {
+    const pinned = item({ id: "pinned", impact: 1, pinned: true });
+    const urgent = item({ id: "urgent", impact: 5, dueDate: "2026-08-18" });
+    const plan = buildPlan([pinned, urgent], "2026-08-19");
+    expect(plan[0].item.id).toBe("pinned");
+    expect(plan[0].reasons).toContain("pinned");
+    expect(plan[0].isCritical).toBe(true);
+  });
 });
 
 describe("JSON exchange boundary", () => {
@@ -110,6 +118,15 @@ describe("JSON exchange boundary", () => {
 
   it("accepts a fully valid record", () => {
     expect(importJson(backup(valid()), theme)).toHaveLength(1);
+  });
+
+  it("accepts a pinned flag", () => {
+    expect(importJson(backup({ ...valid(), pinned: true }), theme)).toHaveLength(1);
+    expect(importJson(backup({ ...valid(), pinned: true }), theme)[0]?.pinned).toBe(true);
+  });
+
+  it("rejects a non-boolean pinned flag", () => {
+    expect(() => importJson(backup({ ...valid(), pinned: "yes" }), theme)).toThrow(/pinned/);
   });
 
   it.each([

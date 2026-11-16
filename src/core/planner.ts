@@ -143,7 +143,7 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
         if (!seen.has(child)) stack.push(child);
       }
     }
-    if (seen.size > bestCount) {
+    if (seen.size > bestCount || (seen.size === bestCount && best !== null && record.id.localeCompare(best.id) < 0)) {
       bestCount = seen.size;
       best = record;
     }
@@ -259,6 +259,11 @@ function createEntry(
   const reasons: string[] = [];
   let score = 0;
 
+  if (item.pinned) {
+    score += 250;
+    reasons.push("pinned");
+  }
+
   if (daysUntilDue < 0) {
     const overdueDays = Math.abs(daysUntilDue);
     score += 100 + overdueDays * 5;
@@ -304,8 +309,8 @@ function createEntry(
     reasons.push("quick win");
   }
 
-  const isCritical = slack <= 0 || (item.impact >= 4 && slack <= 1);
-  const criticality: PlanEntry["criticality"] = slack <= 0 ? "high" : slack <= 2 ? "medium" : "low";
+  const isCritical = item.pinned || slack <= 0 || (item.impact >= 4 && slack <= 1);
+  const criticality: PlanEntry["criticality"] = item.pinned || slack <= 0 ? "high" : slack <= 2 ? "medium" : "low";
 
   return {
     item,
@@ -397,6 +402,10 @@ export function validateRecord(record: LifeRecord, theme: ThemeConfig): string[]
   }
   if (!isTimestamp(record.createdAt)) errors.push("Invalid creation timestamp.");
   if (!isTimestamp(record.updatedAt)) errors.push("Invalid update timestamp.");
+
+  if (record.pinned !== undefined && typeof record.pinned !== "boolean") {
+    errors.push("Invalid pinned flag.");
+  }
 
   if (record.dependsOn !== undefined) {
     if (!Array.isArray(record.dependsOn)) {

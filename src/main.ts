@@ -22,6 +22,7 @@ function seedRecords(): LifeRecord[] {
     createdAt: now,
     updatedAt: now,
     dependsOn: [],
+    pinned: false,
   }));
 }
 
@@ -223,6 +224,12 @@ function render(): void {
   dependenciesLabel.textContent = "Dependencies";
   dependenciesLabel.append(dependenciesInput);
 
+  const pinnedInput = element("input");
+  pinnedInput.type = "checkbox";
+  pinnedInput.checked = editingRecord?.pinned ?? false;
+  const pinnedLabel = element("label");
+  pinnedLabel.append(pinnedInput, document.createTextNode(" Pinned to top"));
+
   grid.append(
     titleLabel,
     categoryLabel,
@@ -232,6 +239,7 @@ function render(): void {
     statusLabel,
     notesLabel,
     dependenciesLabel,
+    pinnedLabel,
   );
 
   const actions = element("div", "form-actions");
@@ -262,6 +270,7 @@ function render(): void {
       createdAt: editingRecord?.createdAt ?? now,
       updatedAt: now,
       dependsOn,
+      pinned: pinnedInput.checked,
     };
     const validationErrors = validateRecord(record, theme);
     if (validationErrors.length > 0) {
@@ -421,6 +430,7 @@ function render(): void {
       if (entry.isCritical) row.classList.add("critical");
       if (entry.isBlocked) row.classList.add("blocked");
       if (entry.daysUntilDue < 0) row.classList.add("overdue");
+      if (entry.item.pinned) row.classList.add("pinned");
       if (selectedId === entry.item.id) row.classList.add("selected");
       if (bottleneckId !== null && entry.item.id === bottleneckId) row.classList.add("critical");
 
@@ -458,7 +468,8 @@ function render(): void {
         : "";
       const bottleneckSuffix =
         bottleneckId !== null && entry.item.id === bottleneckId ? " · bottleneck" : "";
-      itemMeta.textContent = `${entry.item.category} · ${entry.item.effort} min · impact ${entry.item.impact} · ${entry.reasons.join(", ")}${completionSuffix}${dependencySuffix}${bottleneckSuffix}`;
+      const pinnedSuffix = entry.item.pinned ? " · pinned" : "";
+      itemMeta.textContent = `${entry.item.category} · ${entry.item.effort} min · impact ${entry.item.impact} · ${entry.reasons.join(", ")}${completionSuffix}${dependencySuffix}${bottleneckSuffix}${pinnedSuffix}`;
       body.append(itemTitle, itemMeta);
 
       const controls = element("div", "record-actions");

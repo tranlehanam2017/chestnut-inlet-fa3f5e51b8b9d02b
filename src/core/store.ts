@@ -56,6 +56,8 @@ export function isPersistedRecord(value: unknown): value is LifeRecord {
   if (typeof raw.notes !== "string" || raw.notes.length > 600) return false;
   if (!isTimestamp(raw.createdAt) || !isTimestamp(raw.updatedAt)) return false;
 
+  if (raw.pinned !== undefined && typeof raw.pinned !== "boolean") return false;
+
   if (raw.dependsOn !== undefined) {
     if (!Array.isArray(raw.dependsOn)) return false;
     for (const dependency of raw.dependsOn) {

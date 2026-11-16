@@ -8,7 +8,7 @@ an independent project, and its neutral repository name is **chestnut-inlet-fa3f
 ## What it does
 
 - Captures and validates trip task records.
-- Computes an explainable priority score from urgency, impact, effort, and status.
+- Computes an explainable priority score from urgency, impact, effort, status, and manual pins.
 - Builds a seven-day plan with workload and category summaries.
 - Persists data in browser storage with a versioned envelope and safe recovery.
 - Imports strictly runtime-validated JSON or CSV, produces JSON/CSV exports, and includes deterministic tests.
