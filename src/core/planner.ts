@@ -629,7 +629,15 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     entries: [] as PlanEntry[],
   }));
 
-  const plan = providedEntries ?? buildPlanEntries(items, today, null);
+  const rawPlan = providedEntries ?? buildPlanEntries(items, today, null);
+  const plannedIds = new Set<string>();
+  const plan = rawPlan.filter((entry) => {
+    if (!entry?.item || entry.item.status === "done" ||
+        !Number.isFinite(entry.item.effort) || entry.item.effort <= 0) return false;
+    if (plannedIds.has(entry.item.id)) return false;
+    plannedIds.add(entry.item.id);
+    return true;
+  });
   const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
 
