@@ -1,140 +1,419 @@
-import { describe, expect, it } from "vitest";
-import { importJson } from "../src/core/exchange";
-import { buildPlan, daysBetween, findBlockingRoot, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
-import { theme } from "../src/theme";
-import type { LifeRecord } from "../types";
+import type { LifeRecord, PlanEntry, PlanSummary, ThemeConfig } from "../types";
 
-const item = (overrides: Partial<LifeRecord> = {}): LifeRecord => ({
-  id: "one", title: "Example", category: "General", dueDate: "2026-08-20", effort: 30,
-  impact: 3, status: "planned", notes: "", createdAt: "2026-08-01T00:00:00Z",
-  updatedAt: "2026-08-01T00:00:00Z", ...overrides,
-});
+export interface DailyLoadEntry {
+  item: LifeRecord;
+  minutes: number;
+}
 
-describe("planning engine", () => {
-  it("calculates calendar-day distance without local time drift", () => expect(daysBetween("2026-08-19", "2026-08-20")).toBe(1));
-  it("ranks overdue high-impact work above distant work", () => {
-    const overdue = item({ id: "late", dueDate: "2026-08-18", impact: 5 });
-    const distant = item({ id: "later", dueDate: "2026-09-20", impact: 2 });
-    expect(buildPlan([distant, overdue], "2026-08-20")[0]!.item.id).toBe("late");
-  });
-  it("removes completed work from the active plan", () => expect(buildPlan([item({ status: "done" })], "2026-08-19")).toHaveLength(0));
-  it("explains the score", () => expect(priorityFor(item(), "2026-08-19", new Map()).reasons.join(" ")).toContain("due in 1 day"));
-  it("summarizes status and workload", () => {
-    const result = summarize([item(), item({ id: "two", status: "done", category: "Other" })], "2026-08-19");
-    expect(result).toMatchObject({ total: 2, completed: 1, dueSoon: 1, effort: 30 });
-  });
-  it("flags a day whose assigned effort exceeds capacity", () => {
-    const week = suggestDailyLoad([item({ effort: 120 })], 60, "2026-08-19");
-    expect(week.some((day) => day.overloaded)).toBe(true);
-  });
-  it("penalizes blocked tasks in priority", () => {
-    const parent = item({ id: "parent", status: "planned" });
-    const child = item({ id: "child", dependsOn: ["parent"], impact: 5 });
-    const plan = buildPlan([parent, child], "2026-08-19");
-    expect(plan.find(e => e.item.id === "child")?.isBlocked).toBe(true);
-    expect(plan[0].item.id).toBe("parent");
-  });
-  it("unblocks tasks when dependencies are done", () => {
-    const parent = item({ id: "parent", status: "done" });
-    const child = item({ id: "child", dependsOn: ["parent"] });
-    const plan = buildPlan([parent, child], "2026-08-19");
-    expect(plan[0].item.id).toBe("child");
-    expect(plan[0].isBlocked).toBe(false);
-  });
-  it("detects circular dependencies and penalizes score", () => {
-    const a = item({ id: "a", dependsOn: ["b"] });
-    const b = item({ id: "b", dependsOn: ["a"] });
-    const plan = buildPlan([a, b], "2026-08-19");
-    expect(plan.every(e => e.reasons.some(r => r.includes("circular")))).toBe(true);
-    expect(plan.every(e => e.isBlocked)).toBe(true);
-  });
-  it("does not report a blocking root for a dependency cycle", () => {
-    const a = item({ id: "a", dependsOn: ["b"] });
-    const b = item({ id: "b", dependsOn: ["a"] });
-    const itemMap = new Map([a, b].map((record) => [record.id, record]));
-    expect(findBlockingRoot(a, itemMap)).toBeNull();
-  });
-  it("boosts priority of tasks with high blocking power", () => {
-    const root = item({ id: "root", impact: 1 });
-    const child1 = item({ id: "c1", dependsOn: ["root"] });
-    const child2 = item({ id: "c2", dependsOn: ["root"] });
-    const child3 = item({ id: "c3", dependsOn: ["root"] });
-    const standalone = item({ id: "standalone", impact: 2 });
-    
-    const plan = buildPlan([root, child1, child2, child3, standalone], "2026-08-19");
-    const rootEntry = plan.find(e => e.item.id === "root");
-    expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)")).toBe(true);
-    const standaloneIdx = plan.findIndex(e => e.item.id === "standalone");
-    const rootIdx = plan.findIndex(e => e.item.id === "root");
-    expect(rootIdx).toBeLessThan(standaloneIdx);
-  });
-  it("correctly identifies the bottleneck task", () => {
-    const root = item({ id: "root" });
-    const leaf1 = item({ id: "l1", dependsOn: ["root"] });
-    const leaf2 = item({ id: "l2", dependsOn: ["root"] });
-    const other = item({ id: "other" });
-    const leaf3 = item({ id: "l3", dependsOn: ["other"] });
-    
-    expect(findBottleneck([root, leaf1, leaf2, other, leaf3], "2026-08-19")?.id).toBe("root");
-  });
-  it("distributes normal load across days to avoid spikes", () => {
-    const tasks = [
-      item({ id: "t1", effort: 30, dueDate: "2026-08-30" }),
-      item({ id: "t2", effort: 30, dueDate: "2026-08-30" }),
-      item({ id: "t3", effort: 30, dueDate: "2026-08-30" }),
-    ];
-    const week = suggestDailyLoad(tasks, 60, "2026-08-19");
-    const daysWithTasks = week.filter(d => d.entries.length > 0);
-    expect(daysWithTasks.length).toBeGreaterThan(1);
-  });
-  it("identifies and boosts quick wins", () => {
-    const quickWin = item({ id: "qw", effort: 15, impact: 5 });
-    const slowWin = item({ id: "sw", effort: 120, impact: 5 });
-    const plan = buildPlan([quickWin, slowWin], "2026-08-19");
-    const qwEntry = plan.find(e => e.item.id === "qw");
-    expect(qwEntry?.reasons.some(r => r.includes("quick win"))).toBe(true);
-    expect(plan[0].item.id).toBe("qw");
-  });
-  it("boosts priority when slack is zero or negative for high-impact tasks", () => {
-    const highImpact = item({ id: "hi", impact: 5, dueDate: "2026-08-21", effort: 480 }); // 1 day slack
-    const lowImpact = item({ id: "li", impact: 2, dueDate: "2026-08-21", effort: 480 });
-    const plan = buildPlan([highImpact, lowImpact], "2026-08-19");
-    const hiEntry = plan.find(e => e.item.id === "hi");
-    expect(hiEntry?.reasons.some(r => r.includes("critical path urgency"))).toBe(true);
-  });
-  it("estimates completion on the final scheduled day for split work", () => {
-    const week = suggestDailyLoad([item({ id: "big", effort: 120 })], 60, "2026-08-19");
-    expect(week[0]?.completionDates.get("big")).toBe("2026-08-20");
-    const plan = buildPlan([item({ id: "big", effort: 120 })], "2026-08-19");
-    expect(plan[0]?.estimatedCompletionDate).toBe("2026-08-20");
-  });
-});
+export interface DayLoad {
+  date: string;
+  used: number;
+  capacity: number;
+  entries: DailyLoadEntry[];
+  overloaded: boolean;
+  completionDates: Map<string, string>;
+}
 
-describe("JSON exchange boundary", () => {
-  const valid = () => item({ category: theme.categories[0] });
-  const backup = (record: unknown) => JSON.stringify({ schema: 1, records: [record] });
+function isCalendarDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 
-  it("accepts a fully valid record", () => {
-    expect(importJson(backup(valid()), theme)).toHaveLength(1);
-  });
+function isTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 40 ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return false;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const canonical = value.includes(".") ? value : value.replace(/Z$/, ".000Z");
+  return parsed.toISOString() === canonical;
+}
 
-  it.each([
-    ["string effort", { effort: "30" }],
-    ["out-of-range impact", { impact: 9 }],
-    ["unknown status", { status: "paused" }],
-    ["impossible calendar date", { dueDate: "2026-02-30" }],
-    ["empty title", { title: "" }],
-    ["unknown category", { category: "Not in this project" }],
-    ["non-string notes", { notes: 42 }],
-    ["invalid timestamp", { updatedAt: "yesterday" }],
-    ["numeric-looking loose timestamp", { createdAt: "0" }],
-    ["normalized impossible timestamp", { updatedAt: "2026-02-30T00:00:00Z" }],
-  ])("rejects %s", (_label, patch) => {
-    expect(() => importJson(backup({ ...valid(), ...patch }), theme)).toThrow();
-  });
+function parseDay(value: string): number {
+  return Date.parse(`${value}T00:00:00Z`);
+}
 
-  it("rejects duplicate ids instead of silently merging records", () => {
-    const record = valid();
-    expect(() => importJson(JSON.stringify({ schema: 1, records: [record, record] }), theme)).toThrow(/duplicate id/);
+export function daysBetween(a: string, b: string): number {
+  return Math.round((parseDay(b) - parseDay(a)) / 86_400_000);
+}
+
+export function localDay(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(day: string, offset: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function findCycleNodes(records: readonly LifeRecord[], itemMap: Map<string, LifeRecord>): Set<string> {
+  const state = new Map<string, number>();
+  const cycleNodes = new Set<string>();
+  const stack: string[] = [];
+
+  const visit = (id: string): void => {
+    state.set(id, 1);
+    stack.push(id);
+    const record = itemMap.get(id);
+    for (const dependency of record?.dependsOn ?? []) {
+      if (!itemMap.has(dependency)) continue;
+      if (!state.has(dependency)) {
+        visit(dependency);
+      } else if (state.get(dependency) === 1) {
+        const start = stack.indexOf(dependency);
+        if (start >= 0) {
+          for (let index = start; index < stack.length; index++) {
+            cycleNodes.add(stack[index]);
+          }
+        }
+      }
+    }
+    stack.pop();
+    state.set(id, 2);
+  };
+
+  for (const record of records) {
+    if (!state.has(record.id)) visit(record.id);
+  }
+  return cycleNodes;
+}
+
+function isBlocked(item: LifeRecord, itemMap: Map<string, LifeRecord>, cycleNodes: Set<string>): boolean {
+  if (cycleNodes.has(item.id)) return true;
+  return (item.dependsOn ?? []).some((dependency) => {
+    const dependencyItem = itemMap.get(dependency);
+    return Boolean(dependencyItem && dependencyItem.status !== "done");
   });
-});
+}
+
+export function findBlockingRoot(item: LifeRecord, itemMap: Map<string, LifeRecord>): LifeRecord | null {
+  const visited = new Set<string>();
+  let current: LifeRecord | undefined = item;
+
+  while (current) {
+    if (visited.has(current.id)) return null;
+    visited.add(current.id);
+
+    const blockerId = (current.dependsOn ?? []).find((dependency) => {
+      const dependencyItem = itemMap.get(dependency);
+      return Boolean(dependencyItem && dependencyItem.status !== "done");
+    });
+    if (!blockerId) return null;
+
+    const blocker = itemMap.get(blockerId);
+    if (!blocker) return null;
+
+    const blockerHasUndoneDependency = (blocker.dependsOn ?? []).some((dependency) => {
+      const dependencyItem = itemMap.get(dependency);
+      return Boolean(dependencyItem && dependencyItem.status !== "done");
+    });
+    if (!blockerHasUndoneDependency) return blocker;
+    current = blocker;
+  }
+
+  return null;
+}
+
+export function findBottleneck(records: readonly LifeRecord[], _today: string): LifeRecord | null {
+  const active = records.filter((record) => record.status !== "done");
+  if (active.length === 0) return null;
+
+  const itemMap = new Map(active.map((record) => [record.id, record]));
+  const dependents = new Map(active.map((record) => [record.id, [] as string[]]));
+  for (const record of active) {
+    for (const dependency of record.dependsOn ?? []) {
+      if (dependents.has(dependency)) dependents.get(dependency)!.push(record.id);
+    }
+  }
+
+  let best: LifeRecord | null = null;
+  let bestCount = -1;
+  for (const record of active) {
+    const seen = new Set<string>();
+    const stack = [...(dependents.get(record.id) ?? [])];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const child of dependents.get(id) ?? []) {
+        if (!seen.has(child)) stack.push(child);
+      }
+    }
+    if (seen.size > bestCount) {
+      bestCount = seen.size;
+      best = record;
+    }
+  }
+
+  return best;
+}
+
+function countDirectDependents(id: string, records: readonly LifeRecord[]): number {
+  return records.filter((record) => record.status !== "done" && (record.dependsOn ?? []).includes(id)).length;
+}
+
+function slackFor(item: LifeRecord, daysUntilDue: number): number {
+  const dailyCapacity = 480;
+  const daysNeeded = Math.max(1, Math.ceil(item.effort / dailyCapacity));
+  return daysUntilDue - daysNeeded;
+}
+
+export function suggestDailyLoad(
+  records: readonly LifeRecord[],
+  capacity: number,
+  today: string,
+  _plan?: readonly PlanEntry[],
+): DayLoad[] {
+  const active = records.filter((record) => record.status !== "done");
+  const days: DayLoad[] = [];
+  for (let index = 0; index < 7; index++) {
+    days.push({
+      date: addDays(today, index),
+      used: 0,
+      capacity,
+      entries: [],
+      overloaded: false,
+      completionDates: new Map<string, string>(),
+    });
+  }
+  const completionDates = new Map<string, string>();
+
+  const sorted = [...active].sort((a, b) =>
+    daysBetween(today, a.dueDate) - daysBetween(today, b.dueDate) || a.id.localeCompare(b.id),
+  );
+
+  for (const item of sorted) {
+    const dueOffset = daysBetween(today, item.dueDate);
+    const lastDayIndex = Math.min(6, Math.max(0, dueOffset));
+
+    if (item.effort <= capacity) {
+      let chosen = -1;
+      for (let index = lastDayIndex; index >= 0; index--) {
+        if (days[index].used + item.effort <= capacity) {
+          chosen = index;
+          break;
+        }
+      }
+      if (chosen === -1) {
+        let bestIndex = 0;
+        let bestUsed = Number.POSITIVE_INFINITY;
+        for (let index = 0; index <= lastDayIndex; index++) {
+          if (days[index].used < bestUsed) {
+            bestUsed = days[index].used;
+            bestIndex = index;
+          }
+        }
+        chosen = bestIndex;
+      }
+      days[chosen].entries.push({ item, minutes: item.effort });
+      days[chosen].used += item.effort;
+      completionDates.set(item.id, days[chosen].date);
+    } else {
+      let remaining = item.effort;
+      let index = 0;
+      while (remaining > 0 && index <= lastDayIndex) {
+        const day = days[index];
+        const available = capacity - day.used;
+        if (available > 0) {
+          const allocation = Math.min(remaining, available);
+          day.entries.push({ item, minutes: allocation });
+          day.used += allocation;
+          remaining -= allocation;
+          if (remaining <= 0) completionDates.set(item.id, day.date);
+        }
+        index++;
+      }
+      if (remaining > 0) {
+        const day = days[lastDayIndex];
+        day.entries.push({ item, minutes: remaining });
+        day.used += remaining;
+        completionDates.set(item.id, day.date);
+      }
+    }
+  }
+
+  for (const day of days) {
+    day.completionDates = completionDates;
+    day.overloaded = day.used > day.capacity || day.entries.some((entry) => entry.item.effort > day.capacity);
+  }
+
+  return days;
+}
+
+function createEntry(
+  item: LifeRecord,
+  today: string,
+  itemMap: Map<string, LifeRecord>,
+  cycleNodes: Set<string>,
+  completionDates: Map<string, string>,
+): PlanEntry {
+  const daysUntilDue = daysBetween(today, item.dueDate);
+  const blocked = isBlocked(item, itemMap, cycleNodes);
+  const circular = cycleNodes.has(item.id);
+  const blockingCount = countDirectDependents(item.id, Array.from(itemMap.values()));
+  const slack = slackFor(item, daysUntilDue);
+  const reasons: string[] = [];
+  let score = 0;
+
+  if (daysUntilDue < 0) {
+    const overdueDays = Math.abs(daysUntilDue);
+    score += 100 + overdueDays * 5;
+    reasons.push(`overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}`);
+  } else if (daysUntilDue === 0) {
+    score += 90;
+    reasons.push("due today");
+  } else if (daysUntilDue <= 3) {
+    score += 70 - daysUntilDue * 5;
+    reasons.push(`due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}`);
+  } else if (daysUntilDue <= 7) {
+    score += 40 - daysUntilDue * 2;
+    reasons.push(`due in ${daysUntilDue} days`);
+  } else {
+    score += Math.max(0, 20 - daysUntilDue);
+    reasons.push(`due in ${daysUntilDue} days`);
+  }
+
+  score += item.impact * 8;
+  score += Math.max(0, (120 - item.effort) / 10);
+  if (item.status === "active") score += 10;
+
+  if (circular) {
+    score -= 60;
+    reasons.push("circular dependency");
+  } else if (blocked) {
+    score -= 40;
+    reasons.push("blocked");
+  }
+
+  if (blockingCount > 0) {
+    score += blockingCount * 15;
+    reasons.push(`unblocks ${blockingCount} task(s)`);
+  }
+
+  if (!blocked && item.impact >= 4 && slack <= 1) {
+    score += 30;
+    reasons.push("critical path urgency");
+  }
+
+  if (item.effort <= 30 && item.impact >= 4) {
+    score += 25;
+    reasons.push("quick win");
+  }
+
+  const isCritical = slack <= 0 || (item.impact >= 4 && slack <= 1);
+  const criticality: PlanEntry["criticality"] = slack <= 0 ? "high" : slack <= 2 ? "medium" : "low";
+
+  return {
+    item,
+    score,
+    reasons,
+    daysUntilDue,
+    isBlocked: blocked,
+    isCritical,
+    criticality,
+    slack,
+    estimatedCompletionDate: completionDates.get(item.id),
+  };
+}
+
+export function buildPlan(records: readonly LifeRecord[], today: string): PlanEntry[] {
+  const active = records.filter((record) => record.status !== "done");
+  const itemMap = new Map(active.map((record) => [record.id, record]));
+  const cycleNodes = findCycleNodes(active, itemMap);
+  const load = suggestDailyLoad(active, 480, today);
+  const completionDates = load[0]?.completionDates ?? new Map<string, string>();
+
+  const entries = active.map((item) => createEntry(item, today, itemMap, cycleNodes, completionDates));
+  entries.sort((a, b) =>
+    b.score - a.score ||
+    a.daysUntilDue - b.daysUntilDue ||
+    a.item.id.localeCompare(b.item.id),
+  );
+  return entries;
+}
+
+export function priorityFor(
+  item: LifeRecord,
+  today: string,
+  itemMap: Map<string, LifeRecord>,
+): PlanEntry {
+  const records = Array.from(itemMap.values());
+  const active = records.filter((record) => record.status !== "done");
+  const activeMap = new Map(active.map((record) => [record.id, record]));
+  const cycleNodes = findCycleNodes(active, activeMap);
+  const load = suggestDailyLoad(active, 480, today);
+  const completionDates = load[0]?.completionDates ?? new Map<string, string>();
+  return createEntry(item, today, activeMap, cycleNodes, completionDates);
+}
+
+export function summarize(records: readonly LifeRecord[], today: string): PlanSummary {
+  const active = records.filter((record) => record.status !== "done");
+  const byCategory: Record<string, number> = {};
+  for (const record of active) {
+    byCategory[record.category] = (byCategory[record.category] ?? 0) + record.effort;
+  }
+
+  return {
+    total: records.length,
+    completed: records.filter((record) => record.status === "done").length,
+    overdue: active.filter((record) => daysBetween(today, record.dueDate) < 0).length,
+    dueSoon: active.filter((record) => {
+      const days = daysBetween(today, record.dueDate);
+      return days >= 0 && days <= 7;
+    }).length,
+    effort: active.reduce((sum, record) => sum + record.effort, 0),
+    byCategory,
+  };
+}
+
+export function validateRecord(record: LifeRecord, theme: ThemeConfig): string[] {
+  const errors: string[] = [];
+
+  if (typeof record.id !== "string" || record.id.length < 1 || record.id.length > 120) {
+    errors.push("Invalid id.");
+  }
+  if (typeof record.title !== "string" || record.title.trim().length < 1 || record.title.length > 100) {
+    errors.push("Invalid title.");
+  }
+  if (typeof record.category !== "string" || !theme.categories.includes(record.category)) {
+    errors.push("Unknown category.");
+  }
+  if (!isCalendarDay(record.dueDate)) errors.push("Invalid due date.");
+  if (typeof record.effort !== "number" || !Number.isFinite(record.effort) || record.effort < 1 || record.effort > 480) {
+    errors.push("Invalid effort.");
+  }
+  if (typeof record.impact !== "number" || !Number.isInteger(record.impact) || record.impact < 1 || record.impact > 5) {
+    errors.push("Invalid impact.");
+  }
+  if (typeof record.status !== "string" || !["planned", "active", "done"].includes(record.status)) {
+    errors.push("Invalid status.");
+  }
+  if (typeof record.notes !== "string" || record.notes.length > 600) {
+    errors.push("Invalid notes.");
+  }
+  if (!isTimestamp(record.createdAt)) errors.push("Invalid creation timestamp.");
+  if (!isTimestamp(record.updatedAt)) errors.push("Invalid update timestamp.");
+
+  if (record.dependsOn !== undefined) {
+    if (!Array.isArray(record.dependsOn)) {
+      errors.push("Invalid dependencies.");
+    } else {
+      const seen = new Set<string>();
+      for (const dependency of record.dependsOn) {
+        if (typeof dependency !== "string" || dependency.length < 1 || dependency.length > 120) {
+          errors.push("Invalid dependency.");
+          continue;
+        }
+        if (dependency === record.id) errors.push("A task cannot depend on itself.");
+        if (seen.has(dependency)) errors.push("Duplicate dependency.");
+        seen.add(dependency);
+      }
+    }
+  }
+
+  return errors;
+}
