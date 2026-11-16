@@ -1,814 +1,140 @@
-import type { LifeRecord, PlanEntry, PlanSummary, ThemeConfig } from "../types";
+import { describe, expect, it } from "vitest";
+import { importJson } from "../src/core/exchange";
+import { buildPlan, daysBetween, findBlockingRoot, findBottleneck, priorityFor, suggestDailyLoad, summarize } from "../src/core/planner";
+import { theme } from "../src/theme";
+import type { LifeRecord } from "../types";
 
-const DAY_MS = 86_400_000;
+const item = (overrides: Partial<LifeRecord> = {}): LifeRecord => ({
+  id: "one", title: "Example", category: "General", dueDate: "2026-08-20", effort: 30,
+  impact: 3, status: "planned", notes: "", createdAt: "2026-08-01T00:00:00Z",
+  updatedAt: "2026-08-01T00:00:00Z", ...overrides,
+});
 
-export function localDay(date = new Date()): string {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
+describe("planning engine", () => {
+  it("calculates calendar-day distance without local time drift", () => expect(daysBetween("2026-08-19", "2026-08-20")).toBe(1));
+  it("ranks overdue high-impact work above distant work", () => {
+    const overdue = item({ id: "late", dueDate: "2026-08-18", impact: 5 });
+    const distant = item({ id: "later", dueDate: "2026-09-20", impact: 2 });
+    expect(buildPlan([distant, overdue], "2026-08-20")[0]!.item.id).toBe("late");
+  });
+  it("removes completed work from the active plan", () => expect(buildPlan([item({ status: "done" })], "2026-08-19")).toHaveLength(0));
+  it("explains the score", () => expect(priorityFor(item(), "2026-08-19", new Map()).reasons.join(" ")).toContain("due in 1 day"));
+  it("summarizes status and workload", () => {
+    const result = summarize([item(), item({ id: "two", status: "done", category: "Other" })], "2026-08-19");
+    expect(result).toMatchObject({ total: 2, completed: 1, dueSoon: 1, effort: 30 });
+  });
+  it("flags a day whose assigned effort exceeds capacity", () => {
+    const week = suggestDailyLoad([item({ effort: 120 })], 60, "2026-08-19");
+    expect(week.some((day) => day.overloaded)).toBe(true);
+  });
+  it("penalizes blocked tasks in priority", () => {
+    const parent = item({ id: "parent", status: "planned" });
+    const child = item({ id: "child", dependsOn: ["parent"], impact: 5 });
+    const plan = buildPlan([parent, child], "2026-08-19");
+    expect(plan.find(e => e.item.id === "child")?.isBlocked).toBe(true);
+    expect(plan[0].item.id).toBe("parent");
+  });
+  it("unblocks tasks when dependencies are done", () => {
+    const parent = item({ id: "parent", status: "done" });
+    const child = item({ id: "child", dependsOn: ["parent"] });
+    const plan = buildPlan([parent, child], "2026-08-19");
+    expect(plan[0].item.id).toBe("child");
+    expect(plan[0].isBlocked).toBe(false);
+  });
+  it("detects circular dependencies and penalizes score", () => {
+    const a = item({ id: "a", dependsOn: ["b"] });
+    const b = item({ id: "b", dependsOn: ["a"] });
+    const plan = buildPlan([a, b], "2026-08-19");
+    expect(plan.every(e => e.reasons.some(r => r.includes("circular")))).toBe(true);
+    expect(plan.every(e => e.isBlocked)).toBe(true);
+  });
+  it("does not report a blocking root for a dependency cycle", () => {
+    const a = item({ id: "a", dependsOn: ["b"] });
+    const b = item({ id: "b", dependsOn: ["a"] });
+    const itemMap = new Map([a, b].map((record) => [record.id, record]));
+    expect(findBlockingRoot(a, itemMap)).toBeNull();
+  });
+  it("boosts priority of tasks with high blocking power", () => {
+    const root = item({ id: "root", impact: 1 });
+    const child1 = item({ id: "c1", dependsOn: ["root"] });
+    const child2 = item({ id: "c2", dependsOn: ["root"] });
+    const child3 = item({ id: "c3", dependsOn: ["root"] });
+    const standalone = item({ id: "standalone", impact: 2 });
+    
+    const plan = buildPlan([root, child1, child2, child3, standalone], "2026-08-19");
+    const rootEntry = plan.find(e => e.item.id === "root");
+    expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)")).toBe(true);
+    const standaloneIdx = plan.findIndex(e => e.item.id === "standalone");
+    const rootIdx = plan.findIndex(e => e.item.id === "root");
+    expect(rootIdx).toBeLessThan(standaloneIdx);
+  });
+  it("correctly identifies the bottleneck task", () => {
+    const root = item({ id: "root" });
+    const leaf1 = item({ id: "l1", dependsOn: ["root"] });
+    const leaf2 = item({ id: "l2", dependsOn: ["root"] });
+    const other = item({ id: "other" });
+    const leaf3 = item({ id: "l3", dependsOn: ["other"] });
+    
+    expect(findBottleneck([root, leaf1, leaf2, other, leaf3], "2026-08-19")?.id).toBe("root");
+  });
+  it("distributes normal load across days to avoid spikes", () => {
+    const tasks = [
+      item({ id: "t1", effort: 30, dueDate: "2026-08-30" }),
+      item({ id: "t2", effort: 30, dueDate: "2026-08-30" }),
+      item({ id: "t3", effort: 30, dueDate: "2026-08-30" }),
+    ];
+    const week = suggestDailyLoad(tasks, 60, "2026-08-19");
+    const daysWithTasks = week.filter(d => d.entries.length > 0);
+    expect(daysWithTasks.length).toBeGreaterThan(1);
+  });
+  it("identifies and boosts quick wins", () => {
+    const quickWin = item({ id: "qw", effort: 15, impact: 5 });
+    const slowWin = item({ id: "sw", effort: 120, impact: 5 });
+    const plan = buildPlan([quickWin, slowWin], "2026-08-19");
+    const qwEntry = plan.find(e => e.item.id === "qw");
+    expect(qwEntry?.reasons.some(r => r.includes("quick win"))).toBe(true);
+    expect(plan[0].item.id).toBe("qw");
+  });
+  it("boosts priority when slack is zero or negative for high-impact tasks", () => {
+    const highImpact = item({ id: "hi", impact: 5, dueDate: "2026-08-21", effort: 480 }); // 1 day slack
+    const lowImpact = item({ id: "li", impact: 2, dueDate: "2026-08-21", effort: 480 });
+    const plan = buildPlan([highImpact, lowImpact], "2026-08-19");
+    const hiEntry = plan.find(e => e.item.id === "hi");
+    expect(hiEntry?.reasons.some(r => r.includes("critical path urgency"))).toBe(true);
+  });
+  it("estimates completion on the final scheduled day for split work", () => {
+    const week = suggestDailyLoad([item({ id: "big", effort: 120 })], 60, "2026-08-19");
+    expect(week[0]?.completionDates.get("big")).toBe("2026-08-20");
+    const plan = buildPlan([item({ id: "big", effort: 120 })], "2026-08-19");
+    expect(plan[0]?.estimatedCompletionDate).toBe("2026-08-20");
+  });
+});
 
-export function daysBetween(from: string, to: string): number {
-  const start = Date.parse(`${from}T00:00:00Z`);
-  const end = Date.parse(`${to}T00:00:00Z`);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return Number.POSITIVE_INFINITY;
-  return Math.round((end - start) / DAY_MS);
-}
+describe("JSON exchange boundary", () => {
+  const valid = () => item({ category: theme.categories[0] });
+  const backup = (record: unknown) => JSON.stringify({ schema: 1, records: [record] });
 
-function isCalendarDay(value: string): boolean {
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-export function validateRecord(input: Partial<LifeRecord>, theme: ThemeConfig): string[] {
-  const errors: string[] = [];
-  if (!input.title?.trim()) errors.push(`${theme.itemLabel} needs a title.`);
-  if (!input.category || !theme.categories.includes(input.category)) errors.push("Choose a valid category.");
-  if (!input.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate) || !isCalendarDay(input.dueDate)) errors.push("Choose a valid date.");
-  if (!Number.isFinite(input.effort) || Number(input.effort) < 1 || Number(input.effort) > 480) {
-    errors.push(`${theme.effortLabel} must be between 1 and 480.`);
-  }
-  if (!Number.isInteger(input.impact) || Number(input.impact) < 1 || Number(input.impact) > 5) {
-    errors.push(`${theme.impactLabel} must be an integer from 1 to 5.`);
-  }
-  if (input.dependsOn !== undefined) {
-    if (!Array.isArray(input.dependsOn)) {
-      errors.push("Dependencies must be a list of task ids.");
-    } else {
-      const seen = new Set<string>();
-      for (const dependency of input.dependsOn) {
-        if (typeof dependency !== "string" || dependency.length < 1 || dependency.length > 120) {
-          errors.push("Dependencies must be valid task ids.");
-          break;
-        }
-        if (seen.has(dependency)) {
-          errors.push("Dependencies must be unique.");
-          break;
-        }
-        seen.add(dependency);
-      }
-      if (typeof input.id === "string" && Array.isArray(input.dependsOn) && input.dependsOn.includes(input.id)) {
-        errors.push("A task cannot depend on itself.");
-      }
-    }
-  }
-  return errors;
-}
-
-function reachesTarget(start: string, target: string, allItems: Map<string, LifeRecord>, visited = new Set<string>()): boolean {
-  const item = allItems.get(start);
-  if (!item || item.status === "done") return false;
-  if (start === target) return true;
-  if (visited.has(start)) return false;
-
-  visited.add(start);
-  for (const depId of [...new Set(item.dependsOn ?? [])]) {
-    if (depId === target) return true;
-    if (reachesTarget(depId, target, allItems, visited)) return true;
-  }
-  return false;
-}
-
-function isOnCycle(id: string, allItems: Map<string, LifeRecord>): boolean {
-  const item = allItems.get(id);
-  if (!item || item.status === "done") return false;
-
-  for (const depId of [...new Set(item.dependsOn ?? [])]) {
-    if (depId === id) return true;
-    if (reachesTarget(depId, id, allItems, new Set([id]))) return true;
-  }
-  return false;
-}
-
-export function findBlockingRoot(item: LifeRecord, allItems: Map<string, LifeRecord>, visited = new Set<string>()): LifeRecord | null {
-  if (item.status === "done") return null;
-  if (visited.has(item.id)) return null;
-  if (isOnCycle(item.id, allItems)) return null;
-  const nextVisited = new Set(visited);
-  nextVisited.add(item.id);
-  if (!item.dependsOn || item.dependsOn.length === 0) return null;
-
-  for (const depId of [...new Set(item.dependsOn)]) {
-    if (nextVisited.has(depId)) continue;
-
-    const dep = allItems.get(depId);
-    if (!dep || dep.status === "done") continue;
-    if (isOnCycle(dep.id, allItems)) continue;
-
-    const unfinishedDependencies = dep.dependsOn ?? [];
-    const hasUnfinishedDependency = unfinishedDependencies.some((nextId) => {
-      const next = allItems.get(nextId);
-      return !!next && next.status !== "done";
-    });
-    const hasUnfinishedNonCycleDependency = unfinishedDependencies.some((nextId) => {
-      const next = allItems.get(nextId);
-      return !!next && next.status !== "done" && !isOnCycle(next.id, allItems);
-    });
-
-    if (hasUnfinishedNonCycleDependency) {
-      const root = findBlockingRoot(dep, allItems, nextVisited);
-      if (root) return root;
-      continue;
-    }
-
-    if (hasUnfinishedDependency) continue;
-
-    return dep;
-  }
-  return null;
-}
-
-export function priorityFor(item: LifeRecord, today = localDay(), allItems = itemsToMap([item]), criticalPathIds = new Set<string>(), blockingPower = 0, blockingDepth = 0, slack = 0, downstreamEffort = 0, dependencyValue = 0, isPrimaryBottleneck = false, inheritedUrgency = 0, categoryPressure = 1): PlanEntry {
-  const daysUntilDue = daysBetween(today, item.dueDate);
-  const reasons: string[] = [];
-
-  const impactWeight = item.impact >= 4 ? item.impact * 15 : item.impact * 10;
-  let score = impactWeight;
-
-  const categoryWeights: Record<string, { weight: number; reason: string }> = {
-    "Health": { weight: 10, reason: "wellness priority" },
-    "Documents": { weight: 18, reason: "administrative critical" },
-    "Transport": { weight: 7, reason: "logistics priority" },
-    "Lodging": { weight: 10, reason: "accommodation focus" },
-    "Packing": { weight: 5, reason: "preparation focus" },
-  };
-
-  const catFocus = categoryWeights[item.category];
-  if (catFocus) {
-    const weightedCatBonus = catFocus.weight * (1 + (item.impact - 1) * 0.2) * categoryPressure;
-    score += weightedCatBonus;
-    reasons.push(catFocus.reason);
-    if (categoryPressure > 1.2) reasons.push("category balancing priority");
-  }
-
-  const effortLeadDays = Math.ceil(item.effort / 180);
-  const effectiveDaysUntilDue = daysUntilDue - effortLeadDays;
-
-  if (daysUntilDue < 0) {
-    const overdueDays = Math.abs(daysUntilDue);
-    const impactMultiplier = 1 + (item.impact - 1) * 0.4;
-    const overdueBonus = (50 + Math.min(overdueDays, 7) * (item.impact * 3)) * impactMultiplier + (overdueDays > 7 ? (overdueDays - 7) * 3 : 0);
-    score += overdueBonus;
-    reasons.push(`${overdueDays} day(s) overdue`);
-  } else if (daysUntilDue === 0) {
-    score += 45;
-    reasons.push("due today");
-  } else if (daysUntilDue <= 7) {
-    const nearTermBonus = daysUntilDue <= 2 && item.impact >= 4 ? 20 : 0;
-    score += (36 - daysUntilDue * 4) + nearTermBonus;
-    if (nearTermBonus > 0) reasons.push("urgent high-impact task");
-    reasons.push(`due in ${daysUntilDue} day(s)`);
-  } else {
-    const decay = Math.min(daysUntilDue * 0.5, 15);
-    score -= decay;
-    reasons.push(`due in ${daysUntilDue} day(s)`);
-  }
-
-  if (effortLeadDays > 0 && daysUntilDue > 0) {
-    const leadBonus = effortLeadDays * 5;
-    const leadUrgency = daysUntilDue <= effortLeadDays ? (effortLeadDays - daysUntilDue + 1) * 10 : 0;
-    score += leadBonus + leadUrgency;
-    if (leadUrgency > 0) reasons.push("within effort lead-time");
-    else reasons.push(`substantial effort (${effortLeadDays}d lead)`);
-  }
-
-  const efficiency = item.impact / (Math.max(1, item.effort) / 60);
-  const isQuickWin = efficiency > 4 && item.impact >= 4 && item.effort <= 60;
-  if (isQuickWin) {
-    score *= 1.25;
-    reasons.push("🚀 quick win (high value, low effort)");
-  } else if (efficiency > 4 && item.impact >= 3) {
-    score *= 1.10;
-    reasons.push("high efficiency (quick win)");
-  } else if (efficiency > 2 && item.impact >= 4 && item.effort > 60) {
-    score += 12;
-    reasons.push("high density value");
-  } else if (item.impact >= 3 && item.effort > 60 && item.effort <= 180) {
-    score += 5;
-    reasons.push("steady progress task");
-  }
-
-  const effortPenalty = Math.min(item.effort / 30, 8);
-  score -= effortPenalty;
-
-  const updatedDate = item.updatedAt.slice(0, 10);
-  const daysSinceUpdate = daysBetween(updatedDate, today);
-
-  if (item.status === "active") {
-    const activeBonus = 8;
-    if (daysSinceUpdate <= 1) {
-      score += 5;
-      reasons.push("hot momentum");
-    }
-    const stalenessDecay = Math.min(daysSinceUpdate * 0.5, activeBonus);
-    const netBonus = activeBonus - stalenessDecay;
-    score += netBonus;
-    if (netBonus > 0 && daysSinceUpdate > 1) reasons.push("already in progress");
-    else if (daysSinceUpdate > 3) reasons.push("stalled active task");
-
-    if (daysSinceUpdate > 1 && daysSinceUpdate <= 7 && item.effort > 120) {
-      score += 10;
-      reasons.push("active heavy-lift stability");
-    }
-  }
-
-  if (daysSinceUpdate > 30) {
-    const stalePenalty = Math.min((daysSinceUpdate - 30) * 0.15, 10);
-    score -= stalePenalty;
-    if (daysSinceUpdate > 60) reasons.push("stale record");
-  }
-
-  if (daysSinceUpdate >= 1 && daysSinceUpdate <= 7 && slack > 2 && slack < 14) {
-    score += 5;
-    reasons.push("stable priority");
-  }
-
-  if (item.status === "done") score = -1;
-
-  const blockers = [...new Set(item.dependsOn ?? [])].filter((depId) => {
-    const dep = allItems.get(depId);
-    return !!dep && dep.status !== "done";
+  it("accepts a fully valid record", () => {
+    expect(importJson(backup(valid()), theme)).toHaveLength(1);
   });
 
-  const isBlocked = blockers.length > 0;
-  const isCircular = isOnCycle(item.id, allItems);
-
-  if (isCircular) {
-    score -= 200;
-    reasons.push("circular dependency detected");
-  } else if (isBlocked) {
-    score -= 100;
-    if (blockers.length > 1) {
-      reasons.push(`blocked by ${blockers.length} task(s)`);
-    } else {
-      const root = findBlockingRoot(item, allItems);
-      reasons.push(root ? `blocked by "${root.title}"` : "blocked by dependency");
-    }
-  }
-
-  if (criticalPathIds.has(item.id)) {
-    const baseBoost = daysUntilDue <= 2 ? 80 : (daysUntilDue <= 5 ? 50 : 30);
-    const depthMultiplier = Math.min(blockingDepth * 5, 40);
-    score += baseBoost + depthMultiplier;
-    reasons.push("on critical path");
-  }
-
-  if (blockingPower > 0) {
-    const isCriticalBlocker = criticalPathIds.has(item.id);
-    const blockingWeight = isCriticalBlocker
-      ? (dependencyValue > 10 ? 25 : 20)
-      : (dependencyValue > 10 ? 15 : 10);
-
-    score += blockingPower * blockingWeight;
-    reasons.push(`unblocks ${blockingPower} task(s)`);
-  }
-
-  if (blockingDepth > 1) {
-    score += blockingDepth * 10;
-    reasons.push(`unlocks chain of ${blockingDepth} tasks`);
-  }
-
-  if (downstreamEffort > 0) {
-    const effortBoost = Math.min(downstreamEffort / 30, 30);
-    score += effortBoost;
-    if (downstreamEffort >= 180) reasons.push(`unlocks substantial work (${Math.round(downstreamEffort/60)}h)`);
-  }
-
-  if (dependencyValue > 0) {
-    const valueBoost = Math.min(dependencyValue * 5, 40);
-    score += valueBoost;
-    if (dependencyValue >= 10) reasons.push("unlocks high-value tasks");
-  }
-
-  if (daysUntilDue > 7 && blockingPower === 0 && blockingDepth === 0) {
-    const slackDecay = Math.min(slack * 0.2, 15);
-    score -= (10 + slackDecay);
-    reasons.push("has high slack");
-  } else if (daysUntilDue <= 3 && blockingPower > 0) {
-    score += 5;
-    reasons.push("tight window for blocker");
-  }
-
-  if (slack <= 0 && item.impact >= 4) {
-    const urgencyMultiplier = slack < 0 ? 1.4 : (1.2 + (item.impact - 4) * 0.1);
-    score *= urgencyMultiplier;
-    reasons.push(slack < 0 ? "extreme critical urgency" : "critical path urgency");
-  }
-
-  if (item.effort > 120 && item.impact >= 3 && slack < 3 && slack > 0) {
-    const riskBoost = (3 - slack) * 15;
-    score += riskBoost;
-    reasons.push("high complexity risk");
-  }
-
-  if (isPrimaryBottleneck) {
-    score += 40;
-    reasons.push("primary project bottleneck");
-  }
-
-  if (item.impact >= 5 && daysUntilDue > 2 && daysUntilDue <= 14) {
-    score *= 1.1;
-    reasons.push("high-impact focus");
-  }
-
-  if (inheritedUrgency > 0) {
-    const urgencyBoost = Math.min(inheritedUrgency, 60);
-    score += urgencyBoost;
-    if (inheritedUrgency > 30) reasons.push(`critical descendant pressure`);
-    else if (inheritedUrgency > 0) reasons.push(`urgent descendant pressure`);
-  }
-
-  const riskThreshold = item.impact >= 4 ? 7 : 5;
-  const effortRatio = item.effort / (Math.max(1, slack) * 60);
-  const isAlreadyCritical = (daysUntilDue <= 0 && item.impact >= 4) || (daysUntilDue < -3) || (effectiveDaysUntilDue <= 0 && item.impact >= 4) || (slack <= 0 && item.impact >= 4);
-
-  if (!isAlreadyCritical && slack > 0 && slack <= riskThreshold && (item.impact >= 3 && (item.effort > 180 || effortRatio > 0.6))) {
-    const proximityMultiplier = 1 + (riskThreshold - slack) * 0.05 * item.impact;
-    score *= proximityMultiplier;
-    reasons.push("approaching risk zone");
-  }
-
-  if (!isAlreadyCritical && slack > 0 && slack <= 3 && item.effort > 240) {
-    const fragilityBonus = (3 - slack) * 15;
-    score += fragilityBonus;
-    reasons.push("high-effort fragility");
-  }
-
-  if (reasons.length === 0) reasons.push("ranked by impact and effort");
-
-  const isCritical = isAlreadyCritical;
-
-  let criticality: PlanEntry["criticality"] = "low";
-  if (isCritical || slack < 0) {
-    criticality = "high";
-  } else if (slack <= 1 || (slack <= 3 && item.impact >= 4) || inheritedUrgency > 20) {
-    criticality = "medium";
-  }
-
-  return { item, score: Math.round(score * 10) / 10, reasons, daysUntilDue, isBlocked: isBlocked || isCircular, isCritical, slack, criticality };
-}
-
-function itemsToMap(items: any): Map<string, LifeRecord> {
-  if (items instanceof Map) return items;
-  if (Array.isArray(items)) return new Map(items.map(i => [i.id, i]));
-  return new Map();
-}
-
-function buildPlanEntries(items: readonly LifeRecord[], today: string, primaryBottleneckId: string | null): PlanEntry[] {
-  const itemMap = itemsToMap(items);
-
-  const criticalPathIds = new Set<string>();
-  const urgentItems = items.filter(i => i.status !== "done" && (daysBetween(today, i.dueDate) <= 0 || i.impact >= 4));
-
-  const markCriticalTransitive = (id: string) => {
-    if (criticalPathIds.has(id)) return;
-    criticalPathIds.add(id);
-    const item = itemMap.get(id);
-    item?.dependsOn?.forEach(depId => markCriticalTransitive(depId));
-  };
-
-  for (const urgent of urgentItems) {
-    markCriticalTransitive(urgent.id);
-  }
-
-  const blockingCounts = new Map<string, number>();
-  const downstreamEfforts = new Map<string, number>();
-  const dependencyValues = new Map<string, number>();
-  const urgencyInheritance = new Map<string, number>();
-
-  const computeTransitiveValues = (id: string, visited = new Set<string>()) => {
-    if (visited.has(id)) return { value: 0, effort: 0, urgency: 0 };
-    const nextVisited = new Set(visited);
-    nextVisited.add(id);
-
-    let totalValue = 0;
-    let totalEffort = 0;
-    let maxUrgency = 0;
-
-    for (const item of items) {
-      if (item.status === "done") continue;
-      if (item.dependsOn?.includes(id)) {
-        const childStats = computeTransitiveValues(item.id, nextVisited);
-        totalValue += item.impact + (childStats.value * 0.8);
-        totalEffort += item.effort + childStats.effort;
-
-        const childDue = daysBetween(today, item.dueDate);
-        const itemUrgency = (childDue <= 0 ? 45 : (childDue <= 2 ? 30 : (childDue <= 5 ? 15 : 0))) * (item.impact >= 4 ? 1.6 : 1);
-        maxUrgency = Math.max(maxUrgency, itemUrgency + childStats.urgency);
-      }
-    }
-
-    return { value: totalValue, effort: totalEffort, urgency: maxUrgency };
-  };
-
-  for (const item of items) {
-    if (item.status === "done") continue;
-    const stats = computeTransitiveValues(item.id);
-    const directDescendants = items.filter(i => i.status !== "done" && i.dependsOn?.includes(item.id)).length;
-    blockingCounts.set(item.id, directDescendants);
-    downstreamEfforts.set(item.id, stats.effort);
-    dependencyValues.set(item.id, stats.value);
-    urgencyInheritance.set(item.id, stats.urgency);
-  }
-
-  const depthCache = new Map<string, number>();
-  const getDepth = (id: string, visited = new Set<string>()): number => {
-    if (depthCache.has(id)) return depthCache.get(id)!;
-    if (visited.has(id)) return 0;
-    visited.add(id);
-    let maxDepth = 0;
-    for (const item of items) {
-      if (item.status === "done") continue;
-      if (item.dependsOn?.includes(id)) {
-        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id, new Set(visited)));
-      }
-    }
-    depthCache.set(id, maxDepth);
-    return maxDepth;
-  };
-
-  const slackCache = new Map<string, number>();
-  const calculateSlack = (id: string): number => {
-    if (slackCache.has(id)) return slackCache.get(id)!;
-    const item = itemMap.get(id);
-    if (!item) return 0;
-    const due = daysBetween(today, item.dueDate);
-
-    const getChainEffort = (currentId: string, visited = new Set<string>()): number => {
-      if (visited.has(currentId)) return 0;
-      const nextVisited = new Set(visited);
-      nextVisited.add(currentId);
-      const current = itemMap.get(currentId);
-      if (!current) return 0;
-
-      let maxDepEffort = 0;
-      current.dependsOn?.forEach(depId => {
-        const dep = itemMap.get(depId);
-        if (dep && dep.status !== "done") {
-          maxDepEffort = Math.max(maxDepEffort, getChainEffort(depId, nextVisited));
-        }
-      });
-      return current.effort + maxDepEffort;
-    };
-
-    const chainEffort = getChainEffort(id);
-    const effortDays = Math.ceil(chainEffort / 480);
-    let slack = due - effortDays;
-
-    const windowSize = 7;
-    const overlappingTasks = items.filter(i =>
-      i.status !== "done" &&
-      daysBetween(today, i.dueDate) >= 0 &&
-      daysBetween(today, i.dueDate) <= (due + windowSize)
-    );
-
-    const avgImpact = overlappingTasks.length > 0
-      ? overlappingTasks.reduce((sum, i) => sum + i.impact, 0) / overlappingTasks.length
-      : 0;
-
-    const densityPenalty = overlappingTasks.length > 4
-      ? Math.ceil(overlappingTasks.length * (avgImpact / 3))
-      : (overlappingTasks.length > 2 ? 1 : 0);
-
-    const complexityPenalty = item.effort > 240 ? 2 : (item.effort > 120 ? 1 : 0);
-    const impactAdjustment = item.impact >= 4 ? 2 : (item.impact >= 3 ? 1 : 0);
-    
-    const dependencyDensity = (item.dependsOn?.length ?? 0) / (overlappingTasks.length || 1);
-    const concurrencyBonus = dependencyDensity < 0.1 ? Math.ceil(overlappingTasks.length / 4) : Math.ceil(overlappingTasks.length / 8);
-    
-    const depthPenalty = getDepth(id) * 0.5;
-
-    const adjustedSlack = slack - impactAdjustment - complexityPenalty - densityPenalty + concurrencyBonus - depthPenalty;
-    slackCache.set(id, adjustedSlack);
-    return adjustedSlack;
-  };
-
-  const categoryEfforts = new Map<string, number>();
-  let totalRemainingEffort = 0;
-  for (const item of items) {
-    if (item.status !== "done") {
-      categoryEfforts.set(item.category, (categoryEfforts.get(item.category) ?? 0) + item.effort);
-      totalRemainingEffort += item.effort;
-    }
-  }
-
-  const entries = items
-    .map((item) => {
-      const catEffort = categoryEfforts.get(item.category) ?? 0;
-      const pressure = totalRemainingEffort > 0 ? (catEffort / totalRemainingEffort) * 2 : 1;
-      const balancedPressure = Math.max(0.8, Math.min(1.5, pressure));
-
-      return priorityFor(
-        item,
-        today,
-        itemMap,
-        criticalPathIds,
-        blockingCounts.get(item.id) ?? 0,
-        getDepth(item.id),
-        calculateSlack(item.id),
-        downstreamEfforts.get(item.id) ?? 0,
-        dependencyValues.get(item.id) ?? 0,
-        item.id === primaryBottleneckId,
-        urgencyInheritance.get(item.id) ?? 0,
-        balancedPressure
-      );
-    })
-    .filter((entry) => entry.item.status !== "done")
-    .sort((a, b) =>
-      b.score - a.score ||
-      b.item.impact - a.item.impact ||
-      a.item.dueDate.localeCompare(b.item.dueDate) ||
-      (b.item.impact / Math.max(1, b.item.effort)) - (a.item.impact / Math.max(1, a.item.effort))
-    );
-
-  return entries;
-}
-
-export function buildPlan(items: readonly LifeRecord[], today = localDay()): PlanEntry[] {
-  const itemMap = itemsToMap(items);
-  const primaryBottleneckId = findBottleneckId(items, today);
-  const entries = buildPlanEntries(items, today, primaryBottleneckId);
-
-  const dailyLoad = suggestDailyLoad(items, 480, today, entries);
-  const completionDates = new Map<string, string>();
-  for (const day of dailyLoad) {
-    for (const entry of day.entries) {
-      completionDates.set(entry.item.id, day.date);
-    }
-  }
-
-  return entries.map(entry => ({
-    ...entry,
-    estimatedCompletionDate: completionDates.get(entry.item.id)
-  }));
-}
-
-function findBottleneckId(items: readonly LifeRecord[], today: string): string | null {
-  const itemMap = itemsToMap(items);
-  const entries = buildPlanEntries(items, today, null);
-  const bottleneckWeights = new Map<string, number>();
-
-  const depthCache = new Map<string, number>();
-  const getDepth = (id: string, visited = new Set<string>()): number => {
-    if (depthCache.has(id)) return depthCache.get(id)!;
-    if (visited.has(id)) return 0;
-    visited.add(id);
-    let maxDepth = 0;
-    for (const item of items) {
-      if (item.status === "done") continue;
-      if (item.dependsOn?.includes(id)) {
-        maxDepth = Math.max(maxDepth, 1 + getDepth(item.id, new Set(visited)));
-      }
-    }
-    depthCache.set(id, maxDepth);
-    return maxDepth;
-  };
-
-  for (const entry of entries) {
-    if (entry.isBlocked) {
-      const root = findBlockingRoot(entry.item, itemMap);
-      if (root) {
-        const criticalityMultiplier = entry.isCritical ? 5 : 1;
-        const impactWeight = criticalityMultiplier * (entry.item.impact || 1);
-        const volumeWeight = (root.effort / 60) * (entry.isCritical ? 2 : 1);
-        const chainWeight = getDepth(root.id) * 8;
-        const urgencyWeight = entry.daysUntilDue <= 2 ? 20 : 0;
-        bottleneckWeights.set(root.id, (bottleneckWeights.get(root.id) ?? 0) + impactWeight + volumeWeight + chainWeight + urgencyWeight);
-      }
-    }
-  }
-
-  let maxWeight = 0;
-  let bottleneckId: string | null = null;
-
-  for (const [id, weight] of bottleneckWeights.entries()) {
-    if (weight > maxWeight) {
-      maxWeight = weight;
-      bottleneckId = id;
-    }
-  }
-
-  return bottleneckId;
-}
-
-export function findBottleneck(items: readonly LifeRecord[], today = localDay()): LifeRecord | null {
-  const itemMap = itemsToMap(items);
-  const bottleneckId = findBottleneckId(items, today);
-  return bottleneckId ? itemMap.get(bottleneckId) || null : null;
-}
-
-export function summarize(items: readonly LifeRecord[], today = localDay()): PlanSummary {
-  return items.reduce<PlanSummary>((summary, item) => {
-    summary.total += 1;
-    summary.effort += item.status === "done" ? 0 : item.effort;
-    summary.completed += item.status === "done" ? 1 : 0;
-    const days = daysBetween(today, item.dueDate);
-    summary.overdue += item.status !== "done" && days < 0 ? 1 : 0;
-    summary.dueSoon += item.status !== "done" && days >= 0 && days <= 7 ? 1 : 0;
-    summary.byCategory[item.category] = (summary.byCategory[item.category] ?? 0) + 1;
-    return summary;
-  }, { total: 0, completed: 0, overdue: 0, dueSoon: 0, effort: 0, byCategory: {} });
-}
-
-export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: number, today = localDay(), providedEntries?: PlanEntry[]) {
-  const baseCapacity = Math.max(1, minutesPerDay);
-  const activeItems = items.filter(i => i.status !== "done");
-  const totalEffort = activeItems.reduce((sum, i) => sum + i.effort, 0);
-
-  const highImpactCount = activeItems.filter(i => i.impact >= 4).length;
-  const impactRatio = activeItems.length > 0 ? highImpactCount / activeItems.length : 0;
-
-  const workloadDensity = totalEffort / (baseCapacity * 7);
-  const dynamicBuffer = workloadDensity > 1.2 ? 0.9 : 1.0;
-
-  const impactScale = 1 + (impactRatio * 0.15);
-  const capacity = baseCapacity * dynamicBuffer * impactScale;
-
-  const days = Array.from({ length: 7 }, (_, offset) => ({
-    date: new Date(Date.parse(`${today}T00:00:00Z`) + offset * DAY_MS).toISOString().slice(0, 10),
-    used: 0,
-    entries: [] as PlanEntry[],
-  }));
-
-  const rawPlan = providedEntries ?? buildPlanEntries(items, today, null);
-  const plannedIds = new Set<string>();
-  const plan = rawPlan.filter((entry) => {
-    if (!entry?.item || entry.item.status === "done" ||
-        !Number.isFinite(entry.item.effort) || entry.item.effort <= 0) return false;
-    if (plannedIds.has(entry.item.id)) return false;
-    plannedIds.add(entry.item.id);
-    return true;
+  it.each([
+    ["string effort", { effort: "30" }],
+    ["out-of-range impact", { impact: 9 }],
+    ["unknown status", { status: "paused" }],
+    ["impossible calendar date", { dueDate: "2026-02-30" }],
+    ["empty title", { title: "" }],
+    ["unknown category", { category: "Not in this project" }],
+    ["non-string notes", { notes: 42 }],
+    ["invalid timestamp", { updatedAt: "yesterday" }],
+    ["numeric-looking loose timestamp", { createdAt: "0" }],
+    ["normalized impossible timestamp", { updatedAt: "2026-02-30T00:00:00Z" }],
+  ])("rejects %s", (_label, patch) => {
+    expect(() => importJson(backup({ ...valid(), ...patch }), theme)).toThrow();
   });
-  const remainingEffort = new Map<string, number>();
-  const allocatedIds = new Set<string>();
-  const completionIndex = new Map<string, number>();
 
-  for (const item of items) {
-    if (item.status !== "done") remainingEffort.set(item.id, item.effort);
-    else completionIndex.set(item.id, -1);
-  }
-
-  const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
-    const itemId = entry.item.id;
-    const effortNeeded = remainingEffort.get(itemId) ?? 0;
-    if (effortNeeded <= 0) return false;
-
-    let earliestDayIndex = 0;
-    if (entry.item.dependsOn) {
-      for (const depId of entry.item.dependsOn) {
-        const depEffort = remainingEffort.get(depId) ?? 0;
-        if (depEffort > 0) return false;
-        const dependencyCompletion = completionIndex.get(depId);
-        if (dependencyCompletion !== undefined && dependencyCompletion > earliestDayIndex) {
-          earliestDayIndex = dependencyCompletion;
-        }
-      }
-    }
-
-    const sprintBoost = (entry.isCritical && workloadDensity > 1.5) ? 1.5 : 1.0;
-    const limit = strictCapacity ? capacity * sprintBoost : capacity * 1.3 * sprintBoost;
-
-    const todayDay = days.find(d => d.date === today);
-    const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
-
-    const candidates = days.filter((day, index) => {
-      const focusLimit = 5;
-      const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
-      const isHeavyLift = entry.item.effort > 240;
-
-      const urgencyMultiplier = entry.daysUntilDue <= 1 || entry.isCritical ? 2 : 1;
-      if (isHeavyLift && heavyLiftCount >= urgencyMultiplier) return false;
-
-      const highImpactCount = day.entries.filter(e => e.item.impact >= 4).length;
-      if (entry.item.impact >= 4 && highImpactCount >= 2 && day.used < limit * 0.6) return false;
-
-      return index >= earliestDayIndex && day.date >= today && day.used < limit && day.entries.length < focusLimit;
-    });
-
-    if (candidates.length === 0) return false;
-
-    let target: (typeof days)[number] | undefined;
-    if (alreadyStartedToday && todayDay && todayDay.used < limit && days.indexOf(todayDay) >= earliestDayIndex) {
-      target = todayDay;
-    } else if (preferEarliest) {
-      target = candidates[0];
-    } else {
-      target = candidates.reduce((prev, curr) => {
-        if (curr.used < prev.used) return curr;
-        if (curr.used > prev.used) return prev;
-        return curr.date < prev.date ? curr : prev;
-      });
-    }
-
-    const available = limit - target.used;
-    const taken = Math.min(effortNeeded, available);
-
-    if (taken <= 0) return false;
-
-    if (!target.entries.includes(entry)) {
-      target.entries.push(entry);
-    }
-
-    target.used += taken;
-    remainingEffort.set(itemId, effortNeeded - taken);
-
-    if (remainingEffort.get(itemId) === 0) {
-      allocatedIds.add(itemId);
-      completionIndex.set(itemId, days.indexOf(target));
-    }
-
-    return true;
-  };
-
-  let changed = true;
-  let pass = 0;
-  const remaining = [...plan];
-
-  while (changed && pass < 20 && remaining.length > 0) {
-    changed = false;
-    pass++;
-
-    const critical = remaining.filter(e => e.isCritical && e.slack <= 0);
-    const urgent = remaining.filter(e => !critical.includes(e) && (e.daysUntilDue <= 2 || e.isCritical || e.slack <= 0 || e.item.impact >= 4));
-    const normal = remaining.filter(e => !critical.includes(e) && !urgent.includes(e));
-
-    critical.sort((a, b) => a.slack - b.slack || b.score - a.score).forEach(e => {
-      if (allocate(e, false, true)) changed = true;
-    });
-
-    urgent.sort((a, b) => {
-      const aHighRisk = a.item.effort > 180 && a.slack < 2;
-      const bHighRisk = b.item.effort > 180 && b.slack < 2;
-      if (aHighRisk !== bHighRisk) return aHighRisk ? -1 : 1;
-      return b.score - a.score;
-    }).forEach(e => {
-      const strict = e.item.impact < 4 && e.slack > 2;
-      if (allocate(e, strict, true)) changed = true;
-    });
-
-    normal.sort((a, b) => {
-      const aDensity = a.item.impact / a.item.effort;
-      const bDensity = b.item.impact / b.item.effort;
-      return bDensity - aDensity || a.item.dueDate.localeCompare(b.item.dueDate);
-    }).forEach(e => {
-      const preferEarliest = e.daysUntilDue <= 3 || e.item.impact >= 4;
-      if (allocate(e, true, preferEarliest)) changed = true;
-    });
-
-    if (!changed) {
-      const stalledCritical = remaining.filter(e => e.isCritical);
-      for (const e of stalledCritical) {
-        const effortNeeded = remainingEffort.get(e.item.id) ?? 0;
-        if (effortNeeded <= 0) continue;
-
-        const blockedByDependency = (e.item.dependsOn ?? []).some(depId => (remainingEffort.get(depId) ?? 0) > 0);
-        if (blockedByDependency) continue;
-
-        let earliestDayIndex = 0;
-        for (const depId of e.item.dependsOn ?? []) {
-          const dependencyCompletion = completionIndex.get(depId);
-          if (dependencyCompletion !== undefined && dependencyCompletion > earliestDayIndex) {
-            earliestDayIndex = dependencyCompletion;
-          }
-        }
-
-        const gap = days.slice(earliestDayIndex).find(d => d.used < baseCapacity * 1.5);
-        if (gap) {
-          const available = (baseCapacity * 1.5) - gap.used;
-          const taken = Math.min(effortNeeded, available);
-          if (taken > 0) {
-            if (!gap.entries.includes(e)) gap.entries.push(e);
-            gap.used += taken;
-            remainingEffort.set(e.item.id, effortNeeded - taken);
-            if (remainingEffort.get(e.item.id) === 0) {
-              allocatedIds.add(e.item.id);
-              completionIndex.set(e.item.id, days.indexOf(gap));
-            }
-            changed = true;
-          }
-        }
-      }
-    }
-
-    for (let i = remaining.length - 1; i >= 0; i--) {
-      if (allocatedIds.has(remaining[i].item.id)) {
-        remaining.splice(i, 1);
-      }
-    }
-  }
-
-  const completionDates = new Map<string, string>();
-  for (const day of days) {
-    for (const entry of day.entries) {
-      completionDates.set(entry.item.id, day.date);
-    }
-  }
-
-  const resultDays = days.map((day) => ({
-    ...day,
-    overloaded: day.used > baseCapacity,
-    overage: Math.max(0, day.used - baseCapacity),
-    completionDates,
-  }));
-
-  return resultDays;
-}
+  it("rejects duplicate ids instead of silently merging records", () => {
+    const record = valid();
+    expect(() => importJson(JSON.stringify({ schema: 1, records: [record, record] }), theme)).toThrow(/duplicate id/);
+  });
+});
