@@ -640,9 +640,11 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
   });
   const remainingEffort = new Map<string, number>();
   const allocatedIds = new Set<string>();
+  const completionIndex = new Map<string, number>();
 
   for (const item of items) {
     if (item.status !== "done") remainingEffort.set(item.id, item.effort);
+    else completionIndex.set(item.id, -1);
   }
 
   const allocate = (entry: PlanEntry, strictCapacity: boolean, preferEarliest: boolean) => {
@@ -650,10 +652,15 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const effortNeeded = remainingEffort.get(itemId) ?? 0;
     if (effortNeeded <= 0) return false;
 
+    let earliestDayIndex = 0;
     if (entry.item.dependsOn) {
       for (const depId of entry.item.dependsOn) {
         const depEffort = remainingEffort.get(depId) ?? 0;
         if (depEffort > 0) return false;
+        const dependencyCompletion = completionIndex.get(depId);
+        if (dependencyCompletion !== undefined && dependencyCompletion > earliestDayIndex) {
+          earliestDayIndex = dependencyCompletion;
+        }
       }
     }
 
@@ -663,7 +670,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
     const todayDay = days.find(d => d.date === today);
     const alreadyStartedToday = todayDay && todayDay.entries.some(e => e.item.id === itemId);
 
-    const candidates = days.filter((day) => {
+    const candidates = days.filter((day, index) => {
       const focusLimit = 5;
       const heavyLiftCount = day.entries.filter(e => e.item.effort > 240).length;
       const isHeavyLift = entry.item.effort > 240;
@@ -674,13 +681,13 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
       const highImpactCount = day.entries.filter(e => e.item.impact >= 4).length;
       if (entry.item.impact >= 4 && highImpactCount >= 2 && day.used < limit * 0.6) return false;
 
-      return day.date >= today && day.used < limit && day.entries.length < focusLimit;
+      return index >= earliestDayIndex && day.date >= today && day.used < limit && day.entries.length < focusLimit;
     });
 
     if (candidates.length === 0) return false;
 
     let target: (typeof days)[number] | undefined;
-    if (alreadyStartedToday && todayDay && todayDay.used < limit) {
+    if (alreadyStartedToday && todayDay && todayDay.used < limit && days.indexOf(todayDay) >= earliestDayIndex) {
       target = todayDay;
     } else if (preferEarliest) {
       target = candidates[0];
@@ -706,6 +713,7 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
 
     if (remainingEffort.get(itemId) === 0) {
       allocatedIds.add(itemId);
+      completionIndex.set(itemId, days.indexOf(target));
     }
 
     return true;
@@ -755,7 +763,15 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
         const blockedByDependency = (e.item.dependsOn ?? []).some(depId => (remainingEffort.get(depId) ?? 0) > 0);
         if (blockedByDependency) continue;
 
-        const gap = days.find(d => d.used < baseCapacity * 1.5);
+        let earliestDayIndex = 0;
+        for (const depId of e.item.dependsOn ?? []) {
+          const dependencyCompletion = completionIndex.get(depId);
+          if (dependencyCompletion !== undefined && dependencyCompletion > earliestDayIndex) {
+            earliestDayIndex = dependencyCompletion;
+          }
+        }
+
+        const gap = days.slice(earliestDayIndex).find(d => d.used < baseCapacity * 1.5);
         if (gap) {
           const available = (baseCapacity * 1.5) - gap.used;
           const taken = Math.min(effortNeeded, available);
@@ -763,7 +779,10 @@ export function suggestDailyLoad(items: readonly LifeRecord[], minutesPerDay: nu
             if (!gap.entries.includes(e)) gap.entries.push(e);
             gap.used += taken;
             remainingEffort.set(e.item.id, effortNeeded - taken);
-            if (remainingEffort.get(e.item.id) === 0) allocatedIds.add(e.item.id);
+            if (remainingEffort.get(e.item.id) === 0) {
+              allocatedIds.add(e.item.id);
+              completionIndex.set(e.item.id, days.indexOf(gap));
+            }
             changed = true;
           }
         }
