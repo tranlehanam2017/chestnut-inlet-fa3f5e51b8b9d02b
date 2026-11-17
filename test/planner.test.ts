@@ -19,6 +19,9 @@ describe("planning engine", () => {
   });
   it("removes completed work from the active plan", () => expect(buildPlan([item({ status: "done" })], "2026-08-19")).toHaveLength(0));
   it("explains the score", () => expect(priorityFor(item(), "2026-08-19", new Map()).reasons.join(" ")).toContain("due in 1 day"));
+  it("estimates completion for a task absent from the supplied item map", () => {
+    expect(priorityFor(item(), "2026-08-19", new Map()).estimatedCompletionDate).toBe("2026-08-20");
+  });
   it("summarizes status and workload", () => {
     const result = summarize([item(), item({ id: "two", status: "done", category: "Other" })], "2026-08-19");
     expect(result).toMatchObject({ total: 2, completed: 1, dueSoon: 1, effort: 30 });

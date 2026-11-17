@@ -347,6 +347,7 @@ export function priorityFor(
   itemMap: Map<string, LifeRecord>,
 ): PlanEntry {
   const records = Array.from(itemMap.values());
+  if (!itemMap.has(item.id)) records.push(item);
   const active = records.filter((record) => record.status !== "done");
   const activeMap = new Map(active.map((record) => [record.id, record]));
   const cycleNodes = findCycleNodes(active, activeMap);
