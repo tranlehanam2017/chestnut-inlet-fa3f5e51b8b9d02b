@@ -65,12 +65,8 @@ function render(): void {
   const summary = summarize(records, today);
   const week = suggestDailyLoad(records, 480, today, plan);
   const itemMap = new Map(records.map((record) => [record.id, record]));
-  const bottleneckRaw = findBottleneck(records, today) as unknown;
-  const bottleneck =
-    bottleneckRaw && typeof bottleneckRaw === "object"
-      ? (bottleneckRaw as { id?: unknown; title?: unknown })
-      : null;
-  const bottleneckId = typeof bottleneck?.id === "string" ? bottleneck.id : null;
+  const bottleneck = findBottleneck(records, today);
+  const bottleneckId = bottleneck?.id ?? null;
 
   const editingRecord = editingId ? records.find((record) => record.id === editingId) ?? null : null;
   if (editingId && !editingRecord) editingId = null;
@@ -278,8 +274,8 @@ function render(): void {
       return;
     }
     formErrors.textContent = "";
-    store.upsert(record);
     editingId = null;
+    store.upsert(record);
   });
   actions.append(addButton);
 
@@ -321,9 +317,9 @@ function render(): void {
       const imported = file.name.toLowerCase().endsWith(".csv")
         ? importCsv(text, theme)
         : importJson(text, theme);
-      store.replace(imported);
       editingId = null;
       selectedId = null;
+      store.replace(imported);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Import failed.");
     }
@@ -448,17 +444,8 @@ function render(): void {
       const completionSuffix = entry.estimatedCompletionDate
         ? ` · est. complete ${entry.estimatedCompletionDate}`
         : "";
-      const blockingRootRaw = entry.isBlocked ? findBlockingRoot(entry.item, itemMap) : null;
-      const blockingRoot =
-        blockingRootRaw && typeof blockingRootRaw === "object"
-          ? (blockingRootRaw as { id?: unknown; title?: unknown })
-          : null;
-      const rootTitle =
-        typeof blockingRootRaw === "string"
-          ? records.find((record) => record.id === blockingRootRaw)?.title ?? blockingRootRaw
-          : typeof blockingRoot?.title === "string"
-            ? blockingRoot.title
-            : null;
+      const blockingRoot = entry.isBlocked ? findBlockingRoot(entry.item, itemMap) : null;
+      const rootTitle = blockingRoot?.title ?? null;
       const dependencySuffix = entry.isBlocked
         ? rootTitle
           ? ` · blocked by ${rootTitle}`
@@ -491,6 +478,8 @@ function render(): void {
       doneButton.textContent = "Done";
       doneButton.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (editingId === entry.item.id) editingId = null;
+        if (selectedId === entry.item.id) selectedId = null;
         const now = new Date().toISOString();
         store.upsert({ ...entry.item, status: "done", updatedAt: now });
       });
