@@ -131,7 +131,7 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   }
 
   let best: LifeRecord | null = null;
-  let bestCount = -1;
+  let bestCount = 0;
   for (const record of active) {
     const seen = new Set<string>();
     const stack = [...(dependents.get(record.id) ?? [])];
@@ -334,6 +334,7 @@ export function buildPlan(records: readonly LifeRecord[], today: string): PlanEn
 
   const entries = active.map((item) => createEntry(item, today, itemMap, cycleNodes, completionDates));
   entries.sort((a, b) =>
+    (b.item.pinned ? 1 : 0) - (a.item.pinned ? 1 : 0) ||
     b.score - a.score ||
     a.daysUntilDue - b.daysUntilDue ||
     a.item.id.localeCompare(b.item.id),
@@ -346,8 +347,8 @@ export function priorityFor(
   today: string,
   itemMap: Map<string, LifeRecord>,
 ): PlanEntry {
-  const records = Array.from(itemMap.values());
-  if (!itemMap.has(item.id)) records.push(item);
+  const records = Array.from(itemMap.values()).filter((record) => record.id !== item.id);
+  records.push(item);
   const active = records.filter((record) => record.status !== "done");
   const activeMap = new Map(active.map((record) => [record.id, record]));
   const cycleNodes = findCycleNodes(active, activeMap);
