@@ -27,7 +27,7 @@ describe("planning engine", () => {
     expect(result).toMatchObject({ total: 2, completed: 1, dueSoon: 1, effort: 30 });
   });
   it("flags a day whose assigned effort exceeds capacity", () => {
-    const week = suggestDailyLoad([item({ effort: 120 })], 60, "2026-08-19");
+    const week = suggestDailyLoad([item({ effort: 120, dueDate: "2026-08-19" })], 60, "2026-08-19");
     expect(week.some((day) => day.overloaded)).toBe(true);
   });
   it("penalizes blocked tasks in priority", () => {
@@ -66,7 +66,7 @@ describe("planning engine", () => {
     
     const plan = buildPlan([root, child1, child2, child3, standalone], "2026-08-19");
     const rootEntry = plan.find(e => e.item.id === "root");
-    expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)"))).toBe(true);
+    expect(rootEntry?.reasons.some(r => r.includes("unblocks 3 task(s)")).toBe(true);
     const standaloneIdx = plan.findIndex(e => e.item.id === "standalone");
     const rootIdx = plan.findIndex(e => e.item.id === "root");
     expect(rootIdx).toBeLessThan(standaloneIdx);

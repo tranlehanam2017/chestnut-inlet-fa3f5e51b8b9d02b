@@ -238,7 +238,7 @@ export function suggestDailyLoad(
 
   for (const day of days) {
     day.completionDates = completionDates;
-    day.overloaded = day.used > day.capacity || day.entries.some((entry) => entry.item.effort > day.capacity);
+    day.overloaded = day.used > day.capacity || day.entries.some((entry) => entry.minutes > day.capacity);
   }
 
   return days;

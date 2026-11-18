@@ -34,7 +34,16 @@ export function normalizeDependencies(records: readonly LifeRecord[]): LifeRecor
 
     const seen = new Set<string>();
     const dependsOn = record.dependsOn.filter((dependency) => {
-      if (dependency === record.id || !ids.has(dependency) || seen.has(dependency)) return false;
+      if (
+        typeof dependency !== "string" ||
+        dependency.length < 1 ||
+        dependency.length > 120 ||
+        dependency === record.id ||
+        !ids.has(dependency) ||
+        seen.has(dependency)
+      ) {
+        return false;
+      }
       seen.add(dependency);
       return true;
     });

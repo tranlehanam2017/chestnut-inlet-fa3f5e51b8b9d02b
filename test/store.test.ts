@@ -32,6 +32,15 @@ describe("record store dependency normalization", () => {
 
     expect(normalizeDependencies(records)[0]?.dependsOn).toEqual([]);
   });
+
+  it("filters non-string dependency values", () => {
+    const records = [
+      record({ id: "parent" }),
+      record({ id: "child", dependsOn: ["parent", 42 as unknown as string, ""] }),
+    ];
+
+    expect(normalizeDependencies(records).find((item) => item.id === "child")?.dependsOn).toEqual(["parent"]);
+  });
 });
 
 describe("persisted record validation", () => {
