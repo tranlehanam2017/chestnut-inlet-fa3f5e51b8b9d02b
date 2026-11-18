@@ -126,6 +126,7 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   const dependents = new Map(active.map((record) => [record.id, [] as string[]]));
   for (const record of active) {
     for (const dependency of record.dependsOn ?? []) {
+      if (dependency === record.id) continue;
       if (dependents.has(dependency)) dependents.get(dependency)!.push(record.id);
     }
   }
@@ -153,7 +154,7 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
 }
 
 function countDirectDependents(id: string, records: readonly LifeRecord[]): number {
-  return records.filter((record) => record.status !== "done" && (record.dependsOn ?? []).includes(id)).length;
+  return records.filter((record) => record.status !== "done" && record.id !== id && (record.dependsOn ?? []).includes(id)).length;
 }
 
 function slackFor(item: LifeRecord, daysUntilDue: number): number {
