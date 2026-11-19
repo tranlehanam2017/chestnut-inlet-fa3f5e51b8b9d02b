@@ -29,7 +29,9 @@ export function normalizeDependencies(records: readonly LifeRecord[]): LifeRecor
   const ids = new Set(records.map((record) => record.id));
   return records.map((record) => {
     if (!Array.isArray(record.dependsOn)) {
-      return cloneRecord(record);
+      const normalized = cloneRecord(record);
+      normalized.dependsOn = undefined;
+      return normalized;
     }
 
     const seen = new Set<string>();
