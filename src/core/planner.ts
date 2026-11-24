@@ -59,7 +59,8 @@ function findCycleNodes(records: readonly LifeRecord[], itemMap: Map<string, Lif
     state.set(id, 1);
     stack.push(id);
     const record = itemMap.get(id);
-    for (const dependency of record?.dependsOn ?? []) {
+    const dependencies = Array.isArray(record?.dependsOn) ? record.dependsOn : [];
+    for (const dependency of dependencies) {
       if (!itemMap.has(dependency)) continue;
       if (!state.has(dependency)) {
         visit(dependency);
@@ -84,7 +85,8 @@ function findCycleNodes(records: readonly LifeRecord[], itemMap: Map<string, Lif
 
 function isBlocked(item: LifeRecord, itemMap: Map<string, LifeRecord>, cycleNodes: Set<string>): boolean {
   if (cycleNodes.has(item.id)) return true;
-  return (item.dependsOn ?? []).some((dependency) => {
+  const dependencies = Array.isArray(item.dependsOn) ? item.dependsOn : [];
+  return dependencies.some((dependency) => {
     const dependencyItem = itemMap.get(dependency);
     return Boolean(dependencyItem && dependencyItem.status !== "done");
   });
@@ -98,7 +100,8 @@ export function findBlockingRoot(item: LifeRecord, itemMap: Map<string, LifeReco
     if (visited.has(current.id)) return null;
     visited.add(current.id);
 
-    const blockerId = (current.dependsOn ?? []).find((dependency) => {
+    const dependencies = Array.isArray(current.dependsOn) ? current.dependsOn : [];
+    const blockerId = dependencies.find((dependency) => {
       const dependencyItem = itemMap.get(dependency);
       return Boolean(dependencyItem && dependencyItem.status !== "done");
     });
@@ -107,7 +110,8 @@ export function findBlockingRoot(item: LifeRecord, itemMap: Map<string, LifeReco
     const blocker = itemMap.get(blockerId);
     if (!blocker) return null;
 
-    const blockerHasUndoneDependency = (blocker.dependsOn ?? []).some((dependency) => {
+    const blockerDependencies = Array.isArray(blocker.dependsOn) ? blocker.dependsOn : [];
+    const blockerHasUndoneDependency = blockerDependencies.some((dependency) => {
       const dependencyItem = itemMap.get(dependency);
       return Boolean(dependencyItem && dependencyItem.status !== "done");
     });
@@ -125,7 +129,8 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   const itemMap = new Map(active.map((record) => [record.id, record]));
   const dependents = new Map(active.map((record) => [record.id, [] as string[]]));
   for (const record of active) {
-    for (const dependency of record.dependsOn ?? []) {
+    const dependencies = Array.isArray(record.dependsOn) ? record.dependsOn : [];
+    for (const dependency of dependencies) {
       if (dependency === record.id) continue;
       if (dependents.has(dependency)) dependents.get(dependency)!.push(record.id);
     }
@@ -154,7 +159,12 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
 }
 
 function countDirectDependents(id: string, records: readonly LifeRecord[]): number {
-  return records.filter((record) => record.status !== "done" && record.id !== id && (record.dependsOn ?? []).includes(id)).length;
+  return records.filter((record) =>
+    record.status !== "done" &&
+    record.id !== id &&
+    Array.isArray(record.dependsOn) &&
+    record.dependsOn.includes(id),
+  ).length;
 }
 
 function slackFor(item: LifeRecord, daysUntilDue: number): number {
