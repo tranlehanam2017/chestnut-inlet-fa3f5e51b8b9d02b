@@ -143,10 +143,10 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
     const stack = [...(dependents.get(record.id) ?? [])];
     while (stack.length > 0) {
       const id = stack.pop()!;
-      if (seen.has(id)) continue;
+      if (id === record.id || seen.has(id)) continue;
       seen.add(id);
       for (const child of dependents.get(id) ?? []) {
-        if (!seen.has(child)) stack.push(child);
+        if (child !== record.id && !seen.has(child)) stack.push(child);
       }
     }
     if (seen.size > bestCount || (seen.size === bestCount && best !== null && record.id.localeCompare(best.id) < 0)) {

@@ -80,6 +80,15 @@ describe("planning engine", () => {
     
     expect(findBottleneck([root, leaf1, leaf2, other, leaf3], "2026-08-19")?.id).toBe("root");
   });
+  it("does not let dependency cycles inflate bottleneck counts", () => {
+    const cyclic = item({ id: "a", dependsOn: ["b"] });
+    const cyclicDependent = item({ id: "b", dependsOn: ["a"] });
+    const root = item({ id: "root" });
+    const leaf1 = item({ id: "leaf1", dependsOn: ["root"] });
+    const leaf2 = item({ id: "leaf2", dependsOn: ["root"] });
+
+    expect(findBottleneck([cyclic, cyclicDependent, root, leaf1, leaf2], "2026-08-19")?.id).toBe("root");
+  });
   it("distributes normal load across days to avoid spikes", () => {
     const tasks = [
       item({ id: "t1", effort: 30, dueDate: "2026-08-30" }),
