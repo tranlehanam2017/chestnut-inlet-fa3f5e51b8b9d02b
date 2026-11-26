@@ -127,11 +127,14 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   if (active.length === 0) return null;
 
   const itemMap = new Map(active.map((record) => [record.id, record]));
+  const cycleNodes = findCycleNodes(active, itemMap);
   const dependents = new Map(active.map((record) => [record.id, [] as string[]]));
   for (const record of active) {
+    if (cycleNodes.has(record.id)) continue;
     const dependencies = Array.isArray(record.dependsOn) ? record.dependsOn : [];
     for (const dependency of dependencies) {
       if (dependency === record.id) continue;
+      if (cycleNodes.has(dependency)) continue;
       if (dependents.has(dependency)) dependents.get(dependency)!.push(record.id);
     }
   }
@@ -139,14 +142,15 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   let best: LifeRecord | null = null;
   let bestCount = 0;
   for (const record of active) {
+    if (cycleNodes.has(record.id)) continue;
     const seen = new Set<string>();
     const stack = [...(dependents.get(record.id) ?? [])];
     while (stack.length > 0) {
       const id = stack.pop()!;
-      if (id === record.id || seen.has(id)) continue;
+      if (id === record.id || seen.has(id) || cycleNodes.has(id)) continue;
       seen.add(id);
       for (const child of dependents.get(id) ?? []) {
-        if (child !== record.id && !seen.has(child)) stack.push(child);
+        if (child !== record.id && !seen.has(child) && !cycleNodes.has(child)) stack.push(child);
       }
     }
     if (seen.size > bestCount || (seen.size === bestCount && best !== null && record.id.localeCompare(best.id) < 0)) {
@@ -158,10 +162,11 @@ export function findBottleneck(records: readonly LifeRecord[], _today: string): 
   return best;
 }
 
-function countDirectDependents(id: string, records: readonly LifeRecord[]): number {
+function countDirectDependents(id: string, records: readonly LifeRecord[], cycleNodes: Set<string> = new Set<string>()): number {
   return records.filter((record) =>
     record.status !== "done" &&
     record.id !== id &&
+    !cycleNodes.has(record.id) &&
     Array.isArray(record.dependsOn) &&
     record.dependsOn.includes(id),
   ).length;
@@ -265,7 +270,7 @@ function createEntry(
   const daysUntilDue = daysBetween(today, item.dueDate);
   const blocked = isBlocked(item, itemMap, cycleNodes);
   const circular = cycleNodes.has(item.id);
-  const blockingCount = countDirectDependents(item.id, Array.from(itemMap.values()));
+  const blockingCount = countDirectDependents(item.id, Array.from(itemMap.values()), cycleNodes);
   const slack = slackFor(item, daysUntilDue);
   const reasons: string[] = [];
   let score = 0;

@@ -124,6 +124,30 @@ describe("planning engine", () => {
   });
 });
 
+describe("bottleneck cycle handling", () => {
+  it("does not let larger dependency cycles inflate bottleneck counts", () => {
+    const a = item({ id: "a", dependsOn: ["b"] });
+    const b = item({ id: "b", dependsOn: ["c"] });
+    const c = item({ id: "c", dependsOn: ["a"] });
+    const root = item({ id: "root" });
+    const leaf1 = item({ id: "leaf1", dependsOn: ["root"] });
+    const leaf2 = item({ id: "leaf2", dependsOn: ["root"] });
+
+    expect(findBottleneck([a, b, c, root, leaf1, leaf2], "2026-08-19")?.id).toBe("root");
+  });
+});
+
+describe("blocking counts", () => {
+  it("does not count cyclic dependents as unblocked tasks", () => {
+    const root = item({ id: "root", impact: 1 });
+    const normal = item({ id: "normal", dependsOn: ["root"] });
+    const cyclic = item({ id: "cyclic", dependsOn: ["root", "cyclic"] });
+    const plan = buildPlan([root, normal, cyclic], "2026-08-19");
+    const rootEntry = plan.find((entry) => entry.item.id === "root");
+    expect(rootEntry?.reasons).toContain("unblocks 1 task(s)");
+  });
+});
+
 describe("JSON exchange boundary", () => {
   const valid = () => item({ category: theme.categories[0] });
   const backup = (record: unknown) => JSON.stringify({ schema: 1, records: [record] });
